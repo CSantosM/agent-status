@@ -2,6 +2,10 @@
 
 A status bar chip that shows every running Claude Code session at a glance: an agent icon followed by one dot per session.
 
+<p align="center">
+  <img src="docs/images/hover.png" width="820" alt="The chip at the right of the VS Code status bar, next to the notifications bell: a red robot icon followed by five colored dots. Above it, the hover card lists the five sessions in the same order, each with its title, status, time and folder, plus filter links for All, Working, Waiting and Idle.">
+</p>
+
 | Dot | Status  | Meaning                               |
 | --- | ------- | ------------------------------------- |
 | 🟡  | Working | Claude is running a turn              |
@@ -10,6 +14,10 @@ A status bar chip that shows every running Claude Code session at a glance: an a
 
 The icon takes the color of the most urgent status: red if any session is waiting, yellow if any is working.
 
+<p align="center">
+  <img src="docs/images/states.png" width="560" alt="Six states of the chip: no sessions shows only a dimmed icon; all idle shows green dots with a gray icon; some working turns the icon yellow; someone waiting turns it red; a filter to Waiting shows one red dot and a funnel; more than eight sessions shows eight dots and +3.">
+</p>
+
 This is a community project, not affiliated with or endorsed by Anthropic. It needs the [Claude Code](https://code.claude.com) extension for VS Code (or the `claude` CLI) and works best on Linux; see [Limitations](#limitations).
 
 ## Using it
@@ -17,6 +25,12 @@ This is a community project, not affiliated with or endorsed by Anthropic. It ne
 - **Hover the chip** to see the sessions in the same order as the dots, numbered, each with its title, status, time in that status and folder. Click a title to open that session. The filter links at the top (All · Working · Waiting · Idle) choose which dots the chip shows.
 - **Click the chip** to open a searchable session picker. The first waiting session is highlighted, so Enter takes you to it. The funnel button in its title bar opens the status filter.
 - A funnel appears in the chip while a filter is active. The filter is remembered across restarts.
+
+<p align="center">
+  <img src="docs/images/picker.png" width="760" alt="The session picker at the top of the window: a search box and the five sessions, each with its dot, number, title, status and time, and the folder below. The waiting session is highlighted.">
+</p>
+
+_The images are mockups drawn by `docs/render.js` with made-up sessions, using VS Code's icons and Dark Modern colors._
 
 Clicking a session shows it in Claude Code:
 
@@ -94,5 +108,6 @@ It runs the tests first and refuses to package if any fails. Then run **Develope
 | `src/sound.js`  | The finish blip and its audio player fallbacks                                  |
 | `src/util.js`   | Formatting and timeout helpers                                                 |
 | `test/`         | `node:test` suites; `test/helpers.js` stands in for the `vscode` module        |
+| `docs/render.js` | Draws the README images in `docs/images` with headless Chrome (`node docs/render.js`) |
 
 Run the tests with `npm test` (or `node --test 'test/*.test.js'`). The extension tests start real `sleep` processes to stand in for Claude sessions, so they need Linux.

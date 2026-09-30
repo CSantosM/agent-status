@@ -23,6 +23,8 @@ trap 'rm -rf "$build"' EXIT
 
 mkdir -p "$build/extension"
 cp -r package.json extension.js README.md src media "$build/extension/"
+# The README's images are not packaged; point them at the repository so the Extensions view shows them.
+sed -i 's#src="docs/images/#src="https://raw.githubusercontent.com/CSantosM/claude-agent-status/main/docs/images/#g' "$build/extension/README.md"
 
 cat > "$build/extension.vsixmanifest" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
