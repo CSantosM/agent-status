@@ -1,19 +1,19 @@
 {
-  "name": "claude-agent-status",
-  "displayName": "Claude Agent Status",
+  "name": "agent-status",
+  "displayName": "Agent Status",
   "description": "A status bar chip with one dot per running Claude Code session: working, waiting or idle.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "local",
   "private": true,
   "license": "MIT",
   "author": "Carlos Santos",
   "repository": {
     "type": "git",
-    "url": "https://github.com/CSantosM/claude-agent-status.git"
+    "url": "https://github.com/CSantosM/agent-status.git"
   },
-  "homepage": "https://github.com/CSantosM/claude-agent-status#readme",
+  "homepage": "https://github.com/CSantosM/agent-status#readme",
   "bugs": {
-    "url": "https://github.com/CSantosM/claude-agent-status/issues"
+    "url": "https://github.com/CSantosM/agent-status/issues"
   },
   "engines": {
     "vscode": "^1.90.0"
@@ -36,57 +36,57 @@
   "contributes": {
     "commands": [
       {
-        "command": "claudeAgentStatus.showSessions",
+        "command": "agentStatus.showSessions",
         "title": "Show Sessions",
-        "category": "Claude Agent Status"
+        "category": "Agent Status"
       },
       {
-        "command": "claudeAgentStatus.filterByStatus",
+        "command": "agentStatus.filterByStatus",
         "title": "Filter by Status",
-        "category": "Claude Agent Status"
+        "category": "Agent Status"
       },
       {
-        "command": "claudeAgentStatus.refresh",
+        "command": "agentStatus.refresh",
         "title": "Refresh",
-        "category": "Claude Agent Status"
+        "category": "Agent Status"
       },
       {
-        "command": "claudeAgentStatus.testSound",
+        "command": "agentStatus.testSound",
         "title": "Play Finish Sound",
-        "category": "Claude Agent Status"
+        "category": "Agent Status"
       },
       {
-        "command": "claudeAgentStatus.showLog",
+        "command": "agentStatus.showLog",
         "title": "Show Log",
-        "category": "Claude Agent Status"
+        "category": "Agent Status"
       },
       {
-        "command": "claudeAgentStatus.open",
+        "command": "agentStatus.open",
         "title": "Open Session",
-        "category": "Claude Agent Status"
+        "category": "Agent Status"
       },
       {
-        "command": "claudeAgentStatus.setFilter",
+        "command": "agentStatus.setFilter",
         "title": "Set Filter",
-        "category": "Claude Agent Status"
+        "category": "Agent Status"
       }
     ],
     "menus": {
       "commandPalette": [
         {
-          "command": "claudeAgentStatus.open",
+          "command": "agentStatus.open",
           "when": "false"
         },
         {
-          "command": "claudeAgentStatus.setFilter",
+          "command": "agentStatus.setFilter",
           "when": "false"
         }
       ]
     },
     "configuration": {
-      "title": "Claude Agent Status",
+      "title": "Agent Status",
       "properties": {
-        "claudeAgentStatus.scope": {
+        "agentStatus.scope": {
           "type": "string",
           "enum": [
             "window",
@@ -101,7 +101,7 @@
           "default": "window",
           "description": "Which sessions the chip shows. Sessions that belong elsewhere are listed but cannot be opened from this window."
         },
-        "claudeAgentStatus.openIn": {
+        "agentStatus.openIn": {
           "type": "string",
           "enum": [
             "sidebar",
@@ -114,17 +114,17 @@
           "default": "sidebar",
           "description": "Where a session opens when you pick it from the chip."
         },
-        "claudeAgentStatus.soundOnFinish": {
+        "agentStatus.soundOnFinish": {
           "type": "boolean",
           "default": true,
           "description": "Play a short blip when a session in this window finishes its turn (goes from working to idle)."
         },
-        "claudeAgentStatus.soundFile": {
+        "agentStatus.soundFile": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Absolute path of a `.wav` file to play instead of the built-in blip. Try it with **Claude Agent Status: Play Finish Sound**."
+          "markdownDescription": "Absolute path of a `.wav` file to play instead of the built-in blip. Try it with **Agent Status: Play Finish Sound**."
         },
-        "claudeAgentStatus.order": {
+        "agentStatus.order": {
           "type": "string",
           "enum": [
             "stable",
@@ -137,28 +137,28 @@
           "default": "stable",
           "description": "Order of the dots, the hover list and the session picker."
         },
-        "claudeAgentStatus.icon": {
+        "agentStatus.icon": {
           "type": "string",
           "default": "robot",
           "markdownDescription": "Codicon shown at the start of the chip, for example `robot` or `sparkle`."
         },
-        "claudeAgentStatus.iconReflectsStatus": {
+        "agentStatus.iconReflectsStatus": {
           "type": "boolean",
           "default": true,
           "description": "Color the icon with the most urgent status: red if any session is waiting, yellow if any is working."
         },
-        "claudeAgentStatus.maxDots": {
+        "agentStatus.maxDots": {
           "type": "integer",
           "default": 8,
           "minimum": 1,
           "description": "Maximum number of dots; the rest are grouped as +N."
         },
-        "claudeAgentStatus.hideWhenEmpty": {
+        "agentStatus.hideWhenEmpty": {
           "type": "boolean",
           "default": false,
           "description": "Hide the chip when no sessions are running."
         },
-        "claudeAgentStatus.dots": {
+        "agentStatus.dots": {
           "type": "object",
           "default": {
             "busy": "🟡",

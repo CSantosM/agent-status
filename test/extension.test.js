@@ -31,7 +31,7 @@ function setup(t, { preferred = 'panel', context = createContext() } = {}) {
     failUpdates: false,
     onExecute: undefined,
   });
-  state.config.claudeAgentStatus = {};
+  state.config.agentStatus = {};
   state.config.claudeCode = { global: preferred === null ? {} : { preferredLocation: preferred }, workspace: {} };
   const claudeDir = createClaudeDir();
   process.env.CLAUDE_CONFIG_DIR = claudeDir;
@@ -49,8 +49,8 @@ function setup(t, { preferred = 'panel', context = createContext() } = {}) {
   return { context, claudeDir, session, start };
 }
 
-const refresh = () => state.handlers['claudeAgentStatus.refresh']();
-const open = (id) => state.handlers['claudeAgentStatus.open'](id);
+const refresh = () => state.handlers['agentStatus.refresh']();
+const open = (id) => state.handlers['agentStatus.open'](id);
 const chip = () => state.items[state.items.length - 1];
 
 test('shows one dot per live session and skips dead or reused PIDs', async (t) => {
@@ -188,7 +188,7 @@ test('still opens the session when settings cannot be written', async (t) => {
 
 test('does not open sessions that run in another window', async (t) => {
   const { session, start } = setup(t);
-  state.config.claudeAgentStatus.scope = 'all';
+  state.config.agentStatus.scope = 'all';
   const { record } = session({ status: 'idle' }, spawnForeignProcess);
   await start();
   await open(record.sessionId);
@@ -198,7 +198,7 @@ test('does not open sessions that run in another window', async (t) => {
 
 test('falls back to defaults for invalid settings', async (t) => {
   const { session, start } = setup(t);
-  Object.assign(state.config.claudeAgentStatus, { icon: '$(evil) x', maxDots: 'lots', dots: { busy: 42 }, scope: 'nope' });
+  Object.assign(state.config.agentStatus, { icon: '$(evil) x', maxDots: 'lots', dots: { busy: 42 }, scope: 'nope' });
   session({ status: 'busy' });
   await start();
   assert.equal(chip().text, '$(robot) 🟡');

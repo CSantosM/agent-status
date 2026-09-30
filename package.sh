@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds claude-agent-status-<version>.vsix with no npm dependencies.
+# Builds agent-status-<version>.vsix with no npm dependencies.
 # Usage: ./package.sh            build the .vsix
 #        ./package.sh --install  build it and install it into VS Code
 set -euo pipefail
@@ -17,21 +17,21 @@ grep -E '^# (pass|fail)' "$tests_log"
 rm -f "$tests_log"
 
 version=$(node -p "require('./package.json').version")
-out="$PWD/claude-agent-status-${version}.vsix"
+out="$PWD/agent-status-${version}.vsix"
 build=$(mktemp -d)
 trap 'rm -rf "$build"' EXIT
 
 mkdir -p "$build/extension"
 cp -r package.json extension.js README.md src media "$build/extension/"
 # The README's images are not packaged; point them at the repository so the Extensions view shows them.
-sed -i 's#src="docs/images/#src="https://raw.githubusercontent.com/CSantosM/claude-agent-status/main/docs/images/#g' "$build/extension/README.md"
+sed -i 's#src="docs/images/#src="https://raw.githubusercontent.com/CSantosM/agent-status/main/docs/images/#g' "$build/extension/README.md"
 
 cat > "$build/extension.vsixmanifest" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
-    <Identity Language="en-US" Id="claude-agent-status" Version="${version}" Publisher="local" />
-    <DisplayName>Claude Agent Status</DisplayName>
+    <Identity Language="en-US" Id="agent-status" Version="${version}" Publisher="local" />
+    <DisplayName>Agent Status</DisplayName>
     <Description xml:space="preserve">A status bar chip with one dot per running Claude Code session: working, waiting or idle.</Description>
     <Categories>Other</Categories>
     <Properties>

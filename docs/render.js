@@ -228,7 +228,7 @@ function render() {
   if (!CHROME) throw new Error('Google Chrome or Chromium not found; set CHROME.');
   if (!CODICON_TTF) throw new Error("VS Code's codicon.ttf not found; set CODICON_TTF.");
   fs.mkdirSync(OUT, { recursive: true });
-  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-agent-status-docs-'));
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-status-docs-'));
   try {
     const style = css();
     for (const image of IMAGES) {

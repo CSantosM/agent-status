@@ -18,13 +18,13 @@ const { Sound } = require('./src/sound');
 const { formatElapsed, plural, truncate, escapeMarkdown, commandLink, toMillis, withTimeout } = require('./src/util');
 
 const CMD = {
-  showSessions: 'claudeAgentStatus.showSessions',
-  filterByStatus: 'claudeAgentStatus.filterByStatus',
-  refresh: 'claudeAgentStatus.refresh',
-  testSound: 'claudeAgentStatus.testSound',
-  showLog: 'claudeAgentStatus.showLog',
-  open: 'claudeAgentStatus.open',
-  setFilter: 'claudeAgentStatus.setFilter',
+  showSessions: 'agentStatus.showSessions',
+  filterByStatus: 'agentStatus.filterByStatus',
+  refresh: 'agentStatus.refresh',
+  testSound: 'agentStatus.testSound',
+  showLog: 'agentStatus.showLog',
+  open: 'agentStatus.open',
+  setFilter: 'agentStatus.setFilter',
 };
 const CLAUDE_EXTENSION_ID = 'anthropic.claude-code';
 
@@ -55,13 +55,13 @@ const MAX_DETAIL = 140;
 const PENDING_RESTORE_KEY = 'pendingPreferredLocationRestore';
 
 function activate(context) {
-  const log = vscode.window.createOutputChannel('Claude Agent Status', { log: true });
+  const log = vscode.window.createOutputChannel('Agent Status', { log: true });
   context.subscriptions.push(log);
   try {
     new AgentStatus(context, log);
   } catch (err) {
     log.error(`Activation failed: ${err.stack || err}`);
-    vscode.window.showErrorMessage(`Claude Agent Status could not start: ${err.message}`);
+    vscode.window.showErrorMessage(`Agent Status could not start: ${err.message}`);
   }
 }
 
@@ -94,8 +94,8 @@ class AgentStatus {
     this.logged = new Map();
 
     // Lowest priority on the right keeps the chip next to the notifications bell.
-    this.item = vscode.window.createStatusBarItem('claudeAgentStatus.chip', vscode.StatusBarAlignment.Right, -10000);
-    this.item.name = 'Claude Agent Status';
+    this.item = vscode.window.createStatusBarItem('agentStatus.chip', vscode.StatusBarAlignment.Right, -10000);
+    this.item.name = 'Agent Status';
     this.item.command = CMD.showSessions;
 
     const timer = setInterval(() => this.tick(), TICK_MS);
@@ -120,7 +120,7 @@ class AgentStatus {
       vscode.window.onDidCloseTerminal(() => this.schedule()),
       vscode.workspace.onDidChangeWorkspaceFolders(() => this.schedule()),
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration('claudeAgentStatus')) this.schedule();
+        if (e.affectsConfiguration('agentStatus')) this.schedule();
       }),
     );
 
@@ -583,7 +583,7 @@ async function terminalShells() {
 }
 
 function settings() {
-  const c = vscode.workspace.getConfiguration('claudeAgentStatus');
+  const c = vscode.workspace.getConfiguration('agentStatus');
   const oneOf = (key, allowed) => (allowed.includes(c.get(key)) ? c.get(key) : allowed[0]);
   const icon = c.get('icon');
   const maxDots = Number(c.get('maxDots'));

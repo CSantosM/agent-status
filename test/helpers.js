@@ -25,7 +25,7 @@ function createVscode() {
     extensions: { 'anthropic.claude-code': {} },
     workspaceFolders: [],
     terminals: [],
-    config: { claudeAgentStatus: {}, claudeCode: { global: { preferredLocation: 'panel' }, workspace: {} } },
+    config: { agentStatus: {}, claudeCode: { global: { preferredLocation: 'panel' }, workspace: {} } },
   };
   const disposable = () => ({ dispose() {} });
   const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 };
@@ -160,7 +160,7 @@ function disposeContext(context) {
 }
 
 function createClaudeDir() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-agent-status-test-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-status-test-'));
   fs.mkdirSync(path.join(dir, 'sessions'));
   fs.mkdirSync(path.join(dir, 'projects'));
   return dir;
