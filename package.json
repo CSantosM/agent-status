@@ -1,0 +1,185 @@
+{
+  "name": "claude-agent-status",
+  "displayName": "Claude Agent Status",
+  "description": "A status bar chip with one dot per running Claude Code session: working, waiting or idle.",
+  "version": "0.3.0",
+  "publisher": "local",
+  "private": true,
+  "license": "MIT",
+  "author": "Carlos Santos",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CSantosM/claude-agent-status.git"
+  },
+  "homepage": "https://github.com/CSantosM/claude-agent-status#readme",
+  "bugs": {
+    "url": "https://github.com/CSantosM/claude-agent-status/issues"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./extension.js",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "package": "./package.sh",
+    "install-extension": "./package.sh --install"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "claudeAgentStatus.showSessions",
+        "title": "Show Sessions",
+        "category": "Claude Agent Status"
+      },
+      {
+        "command": "claudeAgentStatus.filterByStatus",
+        "title": "Filter by Status",
+        "category": "Claude Agent Status"
+      },
+      {
+        "command": "claudeAgentStatus.refresh",
+        "title": "Refresh",
+        "category": "Claude Agent Status"
+      },
+      {
+        "command": "claudeAgentStatus.testSound",
+        "title": "Play Finish Sound",
+        "category": "Claude Agent Status"
+      },
+      {
+        "command": "claudeAgentStatus.showLog",
+        "title": "Show Log",
+        "category": "Claude Agent Status"
+      },
+      {
+        "command": "claudeAgentStatus.open",
+        "title": "Open Session",
+        "category": "Claude Agent Status"
+      },
+      {
+        "command": "claudeAgentStatus.setFilter",
+        "title": "Set Filter",
+        "category": "Claude Agent Status"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "claudeAgentStatus.open",
+          "when": "false"
+        },
+        {
+          "command": "claudeAgentStatus.setFilter",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Claude Agent Status",
+      "properties": {
+        "claudeAgentStatus.scope": {
+          "type": "string",
+          "enum": [
+            "window",
+            "workspace",
+            "all"
+          ],
+          "enumDescriptions": [
+            "Only sessions started from this window: its Claude Code chats and its integrated terminals.",
+            "Sessions from this window plus any other session whose folder is inside this workspace.",
+            "Every Claude Code session running on this machine."
+          ],
+          "default": "window",
+          "description": "Which sessions the chip shows. Sessions that belong elsewhere are listed but cannot be opened from this window."
+        },
+        "claudeAgentStatus.openIn": {
+          "type": "string",
+          "enum": [
+            "sidebar",
+            "preferredLocation"
+          ],
+          "enumDescriptions": [
+            "Show the session in the Claude Code sidebar, unless it already has its own tab. Claude Code's Preferred Location is set to 'sidebar' only for the instant of the click and then restored, so new chats keep opening where you chose.",
+            "Open it wherever Claude Code's Preferred Location says, like Claude Code's own session list."
+          ],
+          "default": "sidebar",
+          "description": "Where a session opens when you pick it from the chip."
+        },
+        "claudeAgentStatus.soundOnFinish": {
+          "type": "boolean",
+          "default": true,
+          "description": "Play a short blip when a session in this window finishes its turn (goes from working to idle)."
+        },
+        "claudeAgentStatus.soundFile": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Absolute path of a `.wav` file to play instead of the built-in blip. Try it with **Claude Agent Status: Play Finish Sound**."
+        },
+        "claudeAgentStatus.order": {
+          "type": "string",
+          "enum": [
+            "stable",
+            "status"
+          ],
+          "enumDescriptions": [
+            "Start order: every dot keeps its position when its status changes.",
+            "Waiting first, then working, then idle."
+          ],
+          "default": "stable",
+          "description": "Order of the dots, the hover list and the session picker."
+        },
+        "claudeAgentStatus.icon": {
+          "type": "string",
+          "default": "robot",
+          "markdownDescription": "Codicon shown at the start of the chip, for example `robot` or `sparkle`."
+        },
+        "claudeAgentStatus.iconReflectsStatus": {
+          "type": "boolean",
+          "default": true,
+          "description": "Color the icon with the most urgent status: red if any session is waiting, yellow if any is working."
+        },
+        "claudeAgentStatus.maxDots": {
+          "type": "integer",
+          "default": 8,
+          "minimum": 1,
+          "description": "Maximum number of dots; the rest are grouped as +N."
+        },
+        "claudeAgentStatus.hideWhenEmpty": {
+          "type": "boolean",
+          "default": false,
+          "description": "Hide the chip when no sessions are running."
+        },
+        "claudeAgentStatus.dots": {
+          "type": "object",
+          "default": {
+            "busy": "🟡",
+            "waiting": "🔴",
+            "idle": "🟢"
+          },
+          "properties": {
+            "busy": {
+              "type": "string"
+            },
+            "waiting": {
+              "type": "string"
+            },
+            "idle": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "description": "Character shown for each status. A status bar item has a single text color, so colored emoji are what make the dots differ."
+        }
+      }
+    }
+  }
+}
