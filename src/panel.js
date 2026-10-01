@@ -145,14 +145,24 @@ class SessionsPanel {
     return children;
   }
 
+  // Each file carries its repository root, if any (for its changes), and its workspace folder (to
+  // place it).
   async fileNodes(s) {
-    const changes = s.repo ? await this.host.git.fileChanges(s.repo.root, s.files.map((f) => f.path)) : new Map();
-    const base = s.repo ? s.repo.root : s.cwd;
+    const byRoot = new Map();
+    for (const f of s.files) {
+      if (!f.root) continue; // Not in a git repository: there is no HEAD to compare with.
+      if (!byRoot.has(f.root)) byRoot.set(f.root, []);
+      byRoot.get(f.root).push(f.path);
+    }
+    const changes = new Map();
+    for (const [root, files] of byRoot) {
+      for (const [file, change] of await this.host.git.fileChanges(root, files)) changes.set(file, change);
+    }
     return s.files.map((f) => {
       const change = changes.get(f.path);
       const item = new vscode.TreeItem(vscode.Uri.file(f.path), vscode.TreeItemCollapsibleState.None);
       item.id = `${s.key}:file:${f.path}`;
-      item.description = [folderOf(f.path, base), describeChange(change)].filter(Boolean).join(' · ');
+      item.description = [folderOf(f.path, f.base || f.root), describeChange(change)].filter(Boolean).join(' · ');
       item.tooltip = f.path;
       item.contextValue = 'file';
       item.command = { command: 'agentStatus.openFileDiff', title: 'Open Changes', arguments: [s.key, f.path] };

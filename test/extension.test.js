@@ -31,6 +31,7 @@ function setup(t, { preferred = 'panel', context = createContext() } = {}) {
     contentProviders: {},
     respond: undefined,
     l10n: {},
+    workspaceFolders: [],
     messages: [],
     executed: [],
     updates: [],
@@ -69,6 +70,9 @@ const refresh = () => state.handlers['agentStatus.refresh']();
 const open = (id) => state.handlers['agentStatus.open'](`claude-code:${id}`);
 const chip = () => state.items[state.items.length - 1];
 const view = () => state.views[state.views.length - 1];
+const openFolders = (...dirs) => {
+  state.workspaceFolders = dirs.map((dir) => ({ uri: { fsPath: dir }, name: path.basename(dir) }));
+};
 const edit = (file) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Edit', input: { file_path: file } }] } });
 
 function git(cwd, ...args) {
@@ -307,6 +311,7 @@ test('the panel lists edited files with their changes and opens a diff against H
   const root = createRepo();
   const file = path.join(root, 'auth.ts');
   fs.writeFileSync(file, 'export const a = 2;\nexport const b = 3;\n');
+  openFolders(root);
   const { record } = session({ status: 'busy', cwd: root });
   transcript(record, [edit(file)]);
   await start();
@@ -349,7 +354,7 @@ test('every localized string has a Spanish translation', () => {
   assert.deepEqual(keys.filter((key) => !spanish[key]), []);
 });
 
-test('the panel only lists edited files inside the session folder that git tracks', async (t) => {
+test('the panel only lists edited files inside the VS Code workspace that git tracks', async (t) => {
   const { session, transcript, start } = setup(t);
   const root = createRepo();
   fs.writeFileSync(path.join(root, '.gitignore'), 'dist/\n');
@@ -358,33 +363,76 @@ test('the panel only lists edited files inside the session folder that git track
   git(root, 'add', '.');
   git(root, 'commit', '-q', '-m', 'more');
   fs.writeFileSync(path.join(root, 'sub', 'new.ts'), 'untracked\n');
-  fs.mkdirSync(path.join(root, 'sub', 'dist'));
-  fs.writeFileSync(path.join(root, 'sub', 'dist', 'out.js'), 'ignored\n');
+  fs.mkdirSync(path.join(root, 'dist'));
+  fs.writeFileSync(path.join(root, 'dist', 'out.js'), 'ignored\n');
+  const elsewhere = createRepo(); // tracked, but not open in VS Code
+  openFolders(root);
 
+  // The session works in a subfolder; what counts is the workspace, not its folder.
   const { record } = session({ status: 'busy', cwd: path.join(root, 'sub') });
   transcript(record, [
-    edit(path.join(root, 'auth.ts')), // tracked, but outside the session's folder
-    edit(path.join(root, 'sub', 'inner.ts')), // tracked, inside: the only one to show
+    edit(path.join(root, 'auth.ts')), // tracked, in the workspace
+    edit(path.join(root, 'sub', 'inner.ts')), // tracked, in the workspace
     edit(path.join(root, 'sub', 'new.ts')), // not tracked yet
-    edit(path.join(root, 'sub', 'dist', 'out.js')), // ignored by git
+    edit(path.join(root, 'dist', 'out.js')), // ignored by git
+    edit(path.join(elsewhere, 'auth.ts')), // outside the workspace
     edit(path.join(os.tmpdir(), 'claude-scratch', 'notes.md')), // the agent's scratchpad
   ]);
   await start();
 
   const [node] = await view().provider.getChildren();
   const filesNode = (await view().provider.getChildren(node)).find((c) => c.kind === 'files');
-  assert.equal(filesNode.item.description, '1');
+  assert.equal(filesNode.item.description, '2');
   const files = await view().provider.getChildren(filesNode);
-  assert.deepEqual(files.map((f) => f.file.path), [path.join(root, 'sub', 'inner.ts')]);
+  assert.deepEqual(
+    files.map((f) => f.file.path),
+    [path.join(root, 'sub', 'inner.ts'), path.join(root, 'auth.ts')],
+    'most recent first',
+  );
+  assert.deepEqual(files.map((f) => f.item.description), ['sub · no changes', 'no changes']);
 });
 
-test('a session outside any git repository lists no files', async (t) => {
+test('in a multi-root workspace each file is checked against its own repository', async (t) => {
   const { session, transcript, start } = setup(t);
-  const { record } = session({ status: 'busy', cwd: os.tmpdir() });
-  transcript(record, [edit(path.join(os.tmpdir(), 'notes.md'))]);
+  const front = createRepo();
+  const back = createRepo();
+  fs.writeFileSync(path.join(back, 'auth.ts'), 'export const a = 3;\n');
+  openFolders(front, back);
+  const { record } = session({ status: 'busy', cwd: front });
+  transcript(record, [edit(path.join(back, 'auth.ts'))]);
   await start();
+
   const [node] = await view().provider.getChildren();
-  const children = await view().provider.getChildren(node);
-  assert.equal(children.find((c) => c.kind === 'files'), undefined);
-  assert.ok(children.some((c) => c.item.label === 'No files edited yet'));
+  const filesNode = (await view().provider.getChildren(node)).find((c) => c.kind === 'files');
+  const [fileNode] = await view().provider.getChildren(filesNode);
+  assert.equal(fileNode.file.root, back);
+  assert.equal(fileNode.item.description, '+1 −1');
+  await state.handlers['agentStatus.openFileDiff'](fileNode);
+  const diff = state.executed.find((e) => e.id === 'vscode.diff');
+  const head = await state.contentProviders['agent-status-head'].provideTextDocumentContent(diff.args[0]);
+  assert.equal(head, 'export const a = 1;\n', "HEAD comes from the file's repository, not the session's");
+});
+
+test('in a workspace without git, every file edited inside it is listed', async (t) => {
+  const { session, transcript, start } = setup(t);
+  const workspace = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-status-plain-')));
+  fs.mkdirSync(path.join(workspace, 'docs'));
+  fs.writeFileSync(path.join(workspace, 'docs', 'notes.md'), '# Notes\n');
+  openFolders(workspace);
+  const { record } = session({ status: 'busy', cwd: workspace });
+  transcript(record, [
+    edit(path.join(workspace, 'docs', 'notes.md')),
+    edit(path.join(os.tmpdir(), 'claude-scratch', 'plan.md')), // outside the workspace
+  ]);
+  await start();
+
+  const [node] = await view().provider.getChildren();
+  const filesNode = (await view().provider.getChildren(node)).find((c) => c.kind === 'files');
+  const files = await view().provider.getChildren(filesNode);
+  assert.deepEqual(files.map((f) => f.file.path), [path.join(workspace, 'docs', 'notes.md')]);
+  assert.equal(files[0].item.description, 'docs', 'no git, so no changes to report');
+
+  await state.handlers['agentStatus.openFileDiff'](files[0]);
+  assert.equal(state.executed.find((e) => e.id === 'vscode.diff'), undefined);
+  assert.equal(state.executed.find((e) => e.id === 'vscode.open').args[0].fsPath, path.join(workspace, 'docs', 'notes.md'));
 });

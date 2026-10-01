@@ -292,7 +292,7 @@ class AgentStatus {
     const inWorkspace = workspaceFolderOf(record.cwd) !== undefined;
     const { owned, terminalPid } = ownership(record, { shellPids: shells, hostPid: process.pid, inWorkspace });
     const [details, repo] = await Promise.all([this.describe(provider, record), this.git.repoInfo(record.cwd)]);
-    const files = await this.relevantFiles(details.files, record.cwd, repo);
+    const files = await this.relevantFiles(details.files);
     const statusSince = record.statusUpdatedAt || record.updatedAt || record.startedAt || now;
     const action = details.action && typeof details.action.text === 'string' ? details.action : undefined;
     return {
@@ -325,15 +325,33 @@ class AgentStatus {
     };
   }
 
-  // Only the files inside the session's folder that git tracks: an agent's scratch files (in /tmp,
-  // say) and anything outside its project say nothing about its work there.
-  async relevantFiles(files, cwd, repo) {
-    if (!repo || !Array.isArray(files) || !files.length) return [];
-    const inside = files.filter((f) => f && typeof f.path === 'string' && isInside(cwd, f.path));
-    if (!inside.length) return [];
+  // Only the files inside the workspace open in VS Code: an agent's scratch files (in /tmp, say) and
+  // anything outside the workspace say nothing about the work there. Inside a git repository a file
+  // must also be tracked, which leaves out ignored and build files; outside one, every edited file
+  // counts. Each file is checked against the repository it lives in, which need not be the session's,
+  // and keeps that root (for its changes and diff) and its workspace folder (to show where it is).
+  async relevantFiles(files) {
+    if (!Array.isArray(files) || !files.length) return [];
     try {
-      const tracked = await this.git.trackedFiles(repo.root, inside.map((f) => f.path));
-      return inside.filter((f) => tracked.has(f.path));
+      const relevant = [];
+      const byRoot = new Map();
+      for (const [index, file] of files.entries()) {
+        const folder = file && typeof file.path === 'string' ? workspaceFolderOf(file.path) : undefined;
+        if (!folder) continue;
+        const repo = await this.git.repoInfo(path.dirname(file.path));
+        const entry = { index, file: { ...file, root: repo && repo.root, base: folder.uri.fsPath } };
+        if (!repo) {
+          relevant.push(entry);
+          continue;
+        }
+        if (!byRoot.has(repo.root)) byRoot.set(repo.root, []);
+        byRoot.get(repo.root).push(entry);
+      }
+      for (const [root, entries] of byRoot) {
+        const tracked = await this.git.trackedFiles(root, entries.map((e) => e.file.path));
+        relevant.push(...entries.filter((e) => tracked.has(e.file.path)));
+      }
+      return relevant.sort((a, b) => a.index - b.index).map((e) => e.file); // Most recent first, as given.
     } catch (err) {
       this.logChange('tracked', 'warn', `Could not ask git which files it tracks: ${err.message}`);
       return [];
@@ -642,29 +660,33 @@ class AgentStatus {
     }
   }
 
-  // target: a session key with the file path, or a panel file node.
+  // target: a session key with the file path, or a panel file node. entry is the session's record of
+  // the file, with the repository it belongs to.
   resolveFile(target, file) {
-    if (target && typeof target === 'object' && target.kind === 'file') return { session: target.session, file: target.file.path };
-    return { session: this.sessions.find((s) => s.key === target), file };
+    if (target && typeof target === 'object' && target.kind === 'file') {
+      return { session: target.session, file: target.file.path, entry: target.file };
+    }
+    const session = this.sessions.find((s) => s.key === target);
+    return { session, file, entry: session && session.files.find((f) => f.path === file) };
   }
 
-  // The file's changes against HEAD in the session's repository.
+  // The file's changes against HEAD in the repository it lives in.
   async openFileDiff(target, filePath) {
-    const { session, file } = this.resolveFile(target, filePath);
+    const { session, file, entry } = this.resolveFile(target, filePath);
     if (!file) return;
     const fileUri = vscode.Uri.file(file);
-    const repo = session && session.repo;
+    const root = entry && entry.root;
     const exists = fs.existsSync(file);
-    if (!repo) {
+    if (!root) {
       await this.openFile(target, filePath);
       return;
     }
-    const headUri = fileUri.with({ scheme: HEAD_SCHEME, query: new URLSearchParams({ root: repo.root }).toString() });
+    const headUri = fileUri.with({ scheme: HEAD_SCHEME, query: new URLSearchParams({ root }).toString() });
     if (!exists) {
       await vscode.commands.executeCommand('vscode.open', headUri); // Deleted: show what HEAD had.
       return;
     }
-    const title = `${path.basename(file)} (HEAD ↔ Working Tree) · ${truncate(session.title, 40)}`;
+    const title = `${path.basename(file)} (HEAD ↔ Working Tree)${session ? ` · ${truncate(session.title, 40)}` : ''}`;
     await vscode.commands.executeCommand('vscode.diff', headUri, fileUri, title);
   }
 
@@ -739,11 +761,6 @@ function workspaceFolderOf(cwd) {
   return (vscode.workspace.workspaceFolders || []).find(
     (f) => cwd === f.uri.fsPath || cwd.startsWith(f.uri.fsPath + path.sep),
   );
-}
-
-function isInside(dir, file) {
-  const relative = path.relative(dir, file);
-  return !!relative && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
 function folderLabel(cwd) {
