@@ -1,6 +1,7 @@
-// Generates the built-in sounds in media/:
+// Generates the synthesized sounds in media/:
 //   finish.wav   one 90 ms blip gliding up from 880 Hz to 1320 Hz (a session finished its turn)
-//   waiting.wav  two quicker, higher blips (a session waits for your decision)
+// media/waiting.wav is a recorded sound by another author (see the README's credits), so it is not
+// generated here.
 // Run with `node scripts/make-sounds.js` after changing any of the numbers below.
 'use strict';
 
@@ -12,10 +13,6 @@ const GAIN = 0.5;
 
 const SOUNDS = {
   'finish.wav': [{ start: 0, duration: 0.09, fromHz: 880, toHz: 1320 }],
-  'waiting.wav': [
-    { start: 0, duration: 0.07, fromHz: 1175, toHz: 1568 },
-    { start: 0.13, duration: 0.07, fromHz: 1175, toHz: 1568 },
-  ],
 };
 
 function synthesize(blips) {

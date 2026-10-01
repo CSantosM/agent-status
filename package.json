@@ -2,7 +2,7 @@
   "name": "agent-status",
   "displayName": "Agent Status",
   "description": "A status bar chip with one dot per running coding agent session (Claude Code for now): working, waiting or idle.",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -127,7 +127,7 @@
         "agentStatus.soundOnWaiting": {
           "type": "boolean",
           "default": true,
-          "description": "Play a double blip when a session in this window stops to wait for your decision, such as a permission request (goes from working to waiting)."
+          "description": "Play a short alert when a session in this window stops to wait for your decision, such as a permission request (goes from working to waiting)."
         },
         "agentStatus.finishSoundFile": {
           "type": "string",
@@ -137,7 +137,7 @@
         "agentStatus.waitingSoundFile": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Absolute path of a `.wav` file to play instead of the built-in double blip. Try it with **Agent Status: Play Waiting Sound**."
+          "markdownDescription": "Absolute path of a `.wav` file to play instead of the built-in waiting sound. Try it with **Agent Status: Play Waiting Sound**."
         },
         "agentStatus.order": {
           "type": "string",
