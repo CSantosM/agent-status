@@ -135,4 +135,4 @@ Run the tests with `npm test` (or `node --test 'test/*.test.js'`). The extension
 
 The code is under the [MIT License](LICENSE).
 
-`media/waiting.wav`, the waiting sound, is by Mattias "MATRIXXX" Lahoud (2020), used under a [Creative Commons Attribution](https://creativecommons.org/licenses/by/4.0/) license, as its metadata states (without naming the version). It is not covered by the MIT License.
+`media/waiting.wav`, the waiting sound, is ["Gunpoint"](https://freesound.org/people/LilMati/sounds/527850/) by LilMati on Freesound, released under [CC0](https://creativecommons.org/publicdomain/zero/1.0/). The file's own metadata names Mattias "MATRIXXX" Lahoud and a Creative Commons Attribution license, so it is credited here either way.

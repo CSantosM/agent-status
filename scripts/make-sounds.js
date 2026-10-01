@@ -1,6 +1,6 @@
 // Generates the synthesized sounds in media/:
 //   finish.wav   one 90 ms blip gliding up from 880 Hz to 1320 Hz (a session finished its turn)
-// media/waiting.wav is a recorded sound by another author (see the README's credits), so it is not
+// media/waiting.wav is "Gunpoint" by LilMati on Freesound (CC0; see the README), so it is not
 // generated here.
 // Run with `node scripts/make-sounds.js` after changing any of the numbers below.
 'use strict';
