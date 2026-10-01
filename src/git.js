@@ -1,7 +1,11 @@
 'use strict';
 
 // Git state for session folders. The branch comes from reading .git directly (no process per
-// refresh); file changes and HEAD contents run git with a timeout, and only when the UI asks.
+// refresh); everything else runs git with a timeout, cached, and only for what the UI shows.
+//
+// A session's changes are measured from a base commit, so work it already committed still shows:
+// on a branch, where it left the default branch (main, master or origin's HEAD); on the default
+// branch itself, where HEAD was when the session started (from the reflog); failing both, HEAD.
 
 const childProcess = require('child_process');
 const fs = require('fs');
@@ -9,6 +13,8 @@ const path = require('path');
 
 const CACHE_MS = 5000;
 const TRACKED_CACHE_MS = 15000;
+const BASE_CACHE_MS = 15000;
+const DEFAULT_BRANCH_CACHE_MS = 60000;
 const TIMEOUT_MS = 5000;
 const MAX_BUFFER = 32 * 1024 * 1024;
 
@@ -16,11 +22,10 @@ function createGit({
   execFile = childProcess.execFile,
   cacheMs = CACHE_MS,
   trackedCacheMs = TRACKED_CACHE_MS,
+  baseCacheMs = BASE_CACHE_MS,
   timeoutMs = TIMEOUT_MS,
 } = {}) {
-  const repos = new Map();
-  const changes = new Map();
-  const tracked = new Map();
+  const caches = { repos: new Map(), changes: new Map(), tracked: new Map(), bases: new Map(), defaults: new Map() };
 
   function run(args) {
     return new Promise((resolve) => {
@@ -32,72 +37,123 @@ function createGit({
     });
   }
 
-  // { root, name, branch, label, worktree } for the repository holding cwd, or undefined.
-  async function repoInfo(cwd) {
-    const cached = repos.get(cwd);
-    if (cached && Date.now() - cached.at < cacheMs) return cached.value;
-    const value = await findRepo(cwd).catch(() => undefined);
-    repos.set(cwd, { at: Date.now(), value });
+  async function runText(args) {
+    const out = await run(args);
+    const text = out ? out.toString('utf8').trim() : '';
+    return text || undefined;
+  }
+
+  async function cached(cache, key, maxAge, compute) {
+    const hit = cache.get(key);
+    if (hit && Date.now() - hit.at < maxAge) return hit.value;
+    const value = await compute();
+    cache.set(key, { at: Date.now(), value });
     return value;
   }
 
-  // The files git tracks among the given absolute paths, as a Set. Paths outside root never are.
-  async function trackedFiles(root, files) {
-    const key = `${root}\0${files.join('\0')}`;
-    const cached = tracked.get(key);
-    if (cached && Date.now() - cached.at < trackedCacheMs) return cached.value;
-
-    const relative = relativeTo(root, files);
-    const result = new Set();
-    if (relative.size) {
-      const out = await run(['-C', root, 'ls-files', '-z', '--full-name', '--', ...relative.keys()]);
-      for (const rel of out ? out.toString('utf8').split('\0') : []) {
-        if (relative.has(rel)) result.add(relative.get(rel));
-      }
-    }
-    tracked.set(key, { at: Date.now(), value: result });
-    return result;
+  // { root, name, branch, label, worktree } for the repository holding cwd, or undefined.
+  function repoInfo(cwd) {
+    return cached(caches.repos, cwd, cacheMs, () => findRepo(cwd).catch(() => undefined));
   }
 
-  // Map of absolute path -> { status, added, removed } against HEAD, for files inside root.
-  async function fileChanges(root, files) {
-    const key = `${root}\0${files.join('\0')}`;
-    const cached = changes.get(key);
-    if (cached && Date.now() - cached.at < cacheMs) return cached.value;
+  // { ref, name } of the branch work starts from: origin's HEAD, or a local main or master.
+  function defaultBranch(root) {
+    return cached(caches.defaults, root, DEFAULT_BRANCH_CACHE_MS, async () => {
+      const originHead = await runText(['-C', root, 'symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
+      for (const ref of [originHead, 'main', 'master', 'origin/main', 'origin/master']) {
+        if (!ref) continue;
+        if (await runText(['-C', root, 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`])) {
+          return { ref, name: ref.replace(/^origin\//, '') };
+        }
+      }
+      return undefined;
+    });
+  }
 
-    const relative = relativeTo(root, files);
-    const result = new Map();
-    if (relative.size) {
+  // { ref, label, description }: the commit a session's changes are measured from. since is when the
+  // session started, in milliseconds.
+  function compareBase(root, { since } = {}) {
+    const key = `${root}\0${since ? Math.floor(since / 1000) : ''}`;
+    return cached(caches.bases, key, baseCacheMs, async () => {
+      const [info, main] = await Promise.all([repoInfo(root), defaultBranch(root)]);
+      if (info && info.branch && main && info.branch !== main.name) {
+        const forkPoint = await runText(['-C', root, 'merge-base', 'HEAD', main.ref]);
+        if (forkPoint) {
+          return {
+            ref: forkPoint,
+            label: main.name,
+            description: `Changes since ${info.branch} left ${main.name} (${forkPoint.slice(0, 7)})`,
+          };
+        }
+      }
+      if (since) {
+        const atStart = await runText(['-C', root, 'rev-parse', '--verify', '--quiet', `HEAD@{${gitDate(since)}}`]);
+        if (atStart) {
+          return { ref: atStart, label: 'session start', description: `Changes since the session started (${atStart.slice(0, 7)})` };
+        }
+      }
+      const head = await runText(['-C', root, 'rev-parse', '--verify', '--quiet', 'HEAD']);
+      return head ? { ref: head, label: 'HEAD', description: 'Changes not committed yet' } : undefined;
+    });
+  }
+
+  // The files among the given absolute paths that git tracks now, or that the base commit had (so a
+  // file the session deleted and committed still counts), as a Set. Paths outside root never do.
+  function trackedFiles(root, files, ref) {
+    return cached(caches.tracked, `${root}\0${ref || ''}\0${files.join('\0')}`, trackedCacheMs, async () => {
+      const relative = relativeTo(root, files);
+      const result = new Set();
+      if (!relative.size) return result;
       const paths = [...relative.keys()];
-      const [status, numstat] = await Promise.all([
-        run(['-C', root, 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--', ...paths]),
-        run(['-C', root, 'diff', '--numstat', '-z', 'HEAD', '--', ...paths]),
+      const lists = await Promise.all([
+        run(['-C', root, 'ls-files', '-z', '--full-name', '--', ...paths]),
+        ref ? run(['-C', root, 'ls-tree', '-r', '-z', '--name-only', '--full-name', ref, '--', ...paths]) : undefined,
       ]);
-      const statuses = parseStatus(status);
+      for (const out of lists) {
+        for (const rel of out ? out.toString('utf8').split('\0') : []) {
+          if (relative.has(rel)) result.add(relative.get(rel));
+        }
+      }
+      return result;
+    });
+  }
+
+  // Map of absolute path -> { status, added, removed }: the working tree against ref (HEAD unless
+  // given), so committed and uncommitted changes add up.
+  function fileChanges(root, files, ref = 'HEAD') {
+    return cached(caches.changes, `${root}\0${ref}\0${files.join('\0')}`, cacheMs, async () => {
+      const relative = relativeTo(root, files);
+      const result = new Map();
+      if (!relative.size) return result;
+      const paths = [...relative.keys()];
+      const [names, numstat] = await Promise.all([
+        run(['-C', root, 'diff', '--name-status', '-z', ref, '--', ...paths]),
+        run(['-C', root, 'diff', '--numstat', '-z', ref, '--', ...paths]),
+      ]);
+      const statuses = parseNameStatus(names);
       const counts = parseNumstat(numstat);
       for (const [rel, file] of relative) {
         const code = statuses.get(rel);
         const count = counts.get(rel);
         result.set(file, {
-          status: code === undefined ? (status === undefined ? 'unknown' : 'unchanged') : describeStatus(code),
+          status: code === undefined ? (names === undefined ? 'unknown' : 'unchanged') : describeStatus(code),
           added: count ? count.added : undefined,
           removed: count ? count.removed : undefined,
         });
       }
-    }
-    changes.set(key, { at: Date.now(), value: result });
-    return result;
+      return result;
+    });
   }
 
-  // The file's content at HEAD, or '' when it is new or git cannot tell.
-  async function headContent(root, file) {
+  // The file's content at ref (HEAD unless given), or '' when it did not exist or git cannot tell.
+  async function contentAt(root, file, ref = 'HEAD') {
     const rel = path.relative(root, file).split(path.sep).join('/');
     if (!rel || rel.startsWith('..')) return '';
-    const out = await run(['-C', root, 'show', `HEAD:${rel}`]);
+    const out = await run(['-C', root, 'show', `${ref}:${rel}`]);
     return out ? out.toString('utf8') : '';
   }
 
-  return { repoInfo, trackedFiles, fileChanges, headContent };
+  return { repoInfo, defaultBranch, compareBase, trackedFiles, fileChanges, contentAt };
 }
 
 // Map of path relative to root (with "/") -> absolute path, for the files inside root.
@@ -108,6 +164,11 @@ function relativeTo(root, files) {
     if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) relative.set(rel.split(path.sep).join('/'), file);
   }
   return relative;
+}
+
+// A date git's reflog syntax understands: "2026-10-01 10:00:00 +0000".
+function gitDate(ms) {
+  return `${new Date(ms).toISOString().slice(0, 19).replace('T', ' ')} +0000`;
 }
 
 async function findRepo(cwd) {
@@ -143,16 +204,21 @@ async function findRepo(cwd) {
   }
 }
 
-function parseStatus(out) {
+// "M\0path\0", and for renames and copies "R100\0old\0new\0"; the new path is the one that matters.
+function parseNameStatus(out) {
   const statuses = new Map();
   if (!out) return statuses;
   const fields = out.toString('utf8').split('\0');
   for (let i = 0; i < fields.length; i++) {
-    const entry = fields[i];
-    if (entry.length < 4) continue;
-    const code = entry.slice(0, 2);
-    statuses.set(entry.slice(3), code);
-    if (code[0] === 'R' || code[0] === 'C') i++; // Renames and copies are followed by the old path.
+    const code = fields[i];
+    if (!/^[A-Z]\d*$/.test(code)) continue;
+    if (code[0] === 'R' || code[0] === 'C') {
+      statuses.set(fields[i + 2], code);
+      i += 2;
+    } else {
+      statuses.set(fields[i + 1], code);
+      i += 1;
+    }
   }
   return statuses;
 }
@@ -175,11 +241,16 @@ function parseNumstat(out) {
 }
 
 function describeStatus(code) {
-  if (code === '??') return 'untracked';
-  if (code.includes('D')) return 'deleted';
-  if (code.includes('A')) return 'added';
-  if (code.includes('R')) return 'renamed';
-  return 'modified';
+  switch (code[0]) {
+    case 'A':
+      return 'added';
+    case 'D':
+      return 'deleted';
+    case 'R':
+      return 'renamed';
+    default:
+      return 'modified';
+  }
 }
 
 module.exports = { createGit, findRepo };

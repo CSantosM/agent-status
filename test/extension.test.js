@@ -321,14 +321,14 @@ test('the panel lists edited files with their changes and opens a diff against H
   const children = await view().provider.getChildren(node);
   assert.equal(children[0].item.label, 'Editing auth.ts');
   const filesNode = children.find((c) => c.kind === 'files');
-  assert.equal(filesNode.item.description, '1');
+  assert.equal(filesNode.item.description, '1 · since session start', 'on main: measured from where HEAD was when it started');
   const [fileNode] = await view().provider.getChildren(filesNode);
   assert.equal(fileNode.item.description, '+2 −1');
 
   await state.handlers['agentStatus.openFileDiff'](fileNode);
   const diff = state.executed.find((e) => e.id === 'vscode.diff');
   assert.equal(diff.args[1].fsPath, file);
-  const head = await state.contentProviders['agent-status-head'].provideTextDocumentContent(diff.args[0]);
+  const head = await state.contentProviders['agent-status-base'].provideTextDocumentContent(diff.args[0]);
   assert.equal(head, 'export const a = 1;\n');
 });
 
@@ -382,14 +382,15 @@ test('the panel only lists edited files inside the VS Code workspace that git tr
 
   const [node] = await view().provider.getChildren();
   const filesNode = (await view().provider.getChildren(node)).find((c) => c.kind === 'files');
-  assert.equal(filesNode.item.description, '2');
+  assert.equal(filesNode.item.description, '2 · since session start');
   const files = await view().provider.getChildren(filesNode);
   assert.deepEqual(
     files.map((f) => f.file.path),
     [path.join(root, 'sub', 'inner.ts'), path.join(root, 'auth.ts')],
     'most recent first',
   );
-  assert.deepEqual(files.map((f) => f.item.description), ['sub · no changes', 'no changes']);
+  // inner.ts was committed after the session started, so since then it is new.
+  assert.deepEqual(files.map((f) => f.item.description), ['sub · new · +1', 'no changes']);
 });
 
 test('in a multi-root workspace each file is checked against its own repository', async (t) => {
@@ -409,7 +410,7 @@ test('in a multi-root workspace each file is checked against its own repository'
   assert.equal(fileNode.item.description, '+1 −1');
   await state.handlers['agentStatus.openFileDiff'](fileNode);
   const diff = state.executed.find((e) => e.id === 'vscode.diff');
-  const head = await state.contentProviders['agent-status-head'].provideTextDocumentContent(diff.args[0]);
+  const head = await state.contentProviders['agent-status-base'].provideTextDocumentContent(diff.args[0]);
   assert.equal(head, 'export const a = 1;\n', "HEAD comes from the file's repository, not the session's");
 });
 
@@ -435,4 +436,32 @@ test('in a workspace without git, every file edited inside it is listed', async 
   await state.handlers['agentStatus.openFileDiff'](files[0]);
   assert.equal(state.executed.find((e) => e.id === 'vscode.diff'), undefined);
   assert.equal(state.executed.find((e) => e.id === 'vscode.open').args[0].fsPath, path.join(workspace, 'docs', 'notes.md'));
+});
+
+test('the panel measures the files of a session from where its branch left main', async (t) => {
+  const { session, transcript, start } = setup(t);
+  const root = createRepo();
+  git(root, 'checkout', '-q', '-b', 'feat/login');
+  const file = path.join(root, 'auth.ts');
+  fs.writeFileSync(file, 'export const a = 2;\n');
+  git(root, 'commit', '-q', '-am', 'first');
+  fs.writeFileSync(file, 'export const a = 3;\nexport const b = 4;\n');
+  git(root, 'commit', '-q', '-am', 'second');
+  openFolders(root);
+  const { record } = session({ status: 'idle', cwd: root });
+  transcript(record, [edit(file), edit(file)]);
+  await start();
+
+  const [node] = await view().provider.getChildren();
+  const filesNode = (await view().provider.getChildren(node)).find((c) => c.kind === 'files');
+  assert.equal(filesNode.item.description, '1 · since main');
+  assert.match(filesNode.item.tooltip, /^Changes since feat\/login left main \([0-9a-f]{7}\)$/);
+  const [fileNode] = await view().provider.getChildren(filesNode);
+  assert.equal(fileNode.item.description, '+2 −1', 'both commits add up, though nothing is uncommitted');
+
+  await state.handlers['agentStatus.openFileDiff'](fileNode);
+  const diff = state.executed.find((e) => e.id === 'vscode.diff');
+  assert.match(diff.args[2], /^auth\.ts \(main [0-9a-f]{7} ↔ Working Tree\)/);
+  const before = await state.contentProviders['agent-status-base'].provideTextDocumentContent(diff.args[0]);
+  assert.equal(before, 'export const a = 1;\n', 'the left side is the file as it was on main');
 });

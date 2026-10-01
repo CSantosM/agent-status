@@ -28,7 +28,8 @@ const CMD = {
   ungroup: 'agentStatus.ungroup',
 };
 const VIEW_ID = 'agentStatus.sessions';
-const HEAD_SCHEME = 'agent-status-head';
+// Documents with a file's content at a commit, for the left side of a diff.
+const BASE_SCHEME = 'agent-status-base';
 
 const STATUS = {
   waiting: { label: 'Waiting', rank: 0, color: '#F44336' },
@@ -139,8 +140,11 @@ class AgentStatus {
       vscode.commands.registerCommand(CMD.openFile, (target, file) => this.openFile(target, file)),
       vscode.commands.registerCommand(CMD.groupByBranch, () => setGroupBy('branch')),
       vscode.commands.registerCommand(CMD.ungroup, () => setGroupBy('none')),
-      vscode.workspace.registerTextDocumentContentProvider(HEAD_SCHEME, {
-        provideTextDocumentContent: (uri) => this.git.headContent(new URLSearchParams(uri.query).get('root'), uri.fsPath),
+      vscode.workspace.registerTextDocumentContentProvider(BASE_SCHEME, {
+        provideTextDocumentContent: (uri) => {
+          const query = new URLSearchParams(uri.query);
+          return this.git.contentAt(query.get('root'), uri.fsPath, query.get('ref') || 'HEAD');
+        },
       }),
       vscode.window.onDidOpenTerminal(() => this.schedule()),
       vscode.window.onDidCloseTerminal(() => this.schedule()),
@@ -292,7 +296,7 @@ class AgentStatus {
     const inWorkspace = workspaceFolderOf(record.cwd) !== undefined;
     const { owned, terminalPid } = ownership(record, { shellPids: shells, hostPid: process.pid, inWorkspace });
     const [details, repo] = await Promise.all([this.describe(provider, record), this.git.repoInfo(record.cwd)]);
-    const files = await this.relevantFiles(details.files);
+    const files = await this.relevantFiles(details.files, record.startedAt);
     const statusSince = record.statusUpdatedAt || record.updatedAt || record.startedAt || now;
     const action = details.action && typeof details.action.text === 'string' ? details.action : undefined;
     return {
@@ -329,8 +333,9 @@ class AgentStatus {
   // anything outside the workspace say nothing about the work there. Inside a git repository a file
   // must also be tracked, which leaves out ignored and build files; outside one, every edited file
   // counts. Each file is checked against the repository it lives in, which need not be the session's,
-  // and keeps that root (for its changes and diff) and its workspace folder (to show where it is).
-  async relevantFiles(files) {
+  // and keeps that root, the commit its changes are measured from (so work already committed still
+  // shows; see compareBase in src/git.js) and its workspace folder (to show where it is).
+  async relevantFiles(files, startedAt) {
     if (!Array.isArray(files) || !files.length) return [];
     try {
       const relevant = [];
@@ -339,7 +344,7 @@ class AgentStatus {
         const folder = file && typeof file.path === 'string' ? workspaceFolderOf(file.path) : undefined;
         if (!folder) continue;
         const repo = await this.git.repoInfo(path.dirname(file.path));
-        const entry = { index, file: { ...file, root: repo && repo.root, base: folder.uri.fsPath } };
+        const entry = { index, file: { ...file, root: repo && repo.root, folder: folder.uri.fsPath } };
         if (!repo) {
           relevant.push(entry);
           continue;
@@ -348,8 +353,11 @@ class AgentStatus {
         byRoot.get(repo.root).push(entry);
       }
       for (const [root, entries] of byRoot) {
-        const tracked = await this.git.trackedFiles(root, entries.map((e) => e.file.path));
-        relevant.push(...entries.filter((e) => tracked.has(e.file.path)));
+        const compare = await this.git.compareBase(root, { since: startedAt });
+        const tracked = await this.git.trackedFiles(root, entries.map((e) => e.file.path), compare && compare.ref);
+        for (const e of entries) {
+          if (tracked.has(e.file.path)) relevant.push({ ...e, file: { ...e.file, compare } });
+        }
       }
       return relevant.sort((a, b) => a.index - b.index).map((e) => e.file); // Most recent first, as given.
     } catch (err) {
@@ -670,24 +678,26 @@ class AgentStatus {
     return { session, file, entry: session && session.files.find((f) => f.path === file) };
   }
 
-  // The file's changes against HEAD in the repository it lives in.
+  // The file's changes in the repository it lives in, from the commit the session's changes are
+  // measured from to the working tree: everything the session did, committed or not.
   async openFileDiff(target, filePath) {
     const { session, file, entry } = this.resolveFile(target, filePath);
     if (!file) return;
     const fileUri = vscode.Uri.file(file);
     const root = entry && entry.root;
-    const exists = fs.existsSync(file);
     if (!root) {
       await this.openFile(target, filePath);
       return;
     }
-    const headUri = fileUri.with({ scheme: HEAD_SCHEME, query: new URLSearchParams({ root }).toString() });
-    if (!exists) {
-      await vscode.commands.executeCommand('vscode.open', headUri); // Deleted: show what HEAD had.
+    const compare = entry.compare || { ref: 'HEAD', label: 'HEAD' };
+    const baseUri = fileUri.with({ scheme: BASE_SCHEME, query: new URLSearchParams({ root, ref: compare.ref }).toString() });
+    if (!fs.existsSync(file)) {
+      await vscode.commands.executeCommand('vscode.open', baseUri); // Deleted: show what it was.
       return;
     }
-    const title = `${path.basename(file)} (HEAD ↔ Working Tree)${session ? ` · ${truncate(session.title, 40)}` : ''}`;
-    await vscode.commands.executeCommand('vscode.diff', headUri, fileUri, title);
+    const from = compare.label === 'HEAD' ? 'HEAD' : `${compare.label} ${compare.ref.slice(0, 7)}`;
+    const title = `${path.basename(file)} (${from} ↔ Working Tree)${session ? ` · ${truncate(session.title, 40)}` : ''}`;
+    await vscode.commands.executeCommand('vscode.diff', baseUri, fileUri, title);
   }
 
   async openFile(target, filePath) {

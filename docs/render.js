@@ -275,7 +275,7 @@ function panel() {
     treeRow(1, session(login, { twistie: 'open', hovered: true, inline: 'link-external' })),
     treeRow(2, { iconHtml: plain(login.action.icon), label: login.action.text }),
     treeRow(2, { iconHtml: plain('folder'), label: login.folder }),
-    treeRow(2, { twistie: 'open', iconHtml: plain('files'), label: 'Files edited', desc: '3' }),
+    treeRow(2, { twistie: 'open', iconHtml: plain('files'), label: 'Files edited', desc: '3 · since session start' }),
     treeRow(3, { iconHtml: ts, label: 'auth.ts', desc: 'src · +12 −3' }),
     treeRow(3, { iconHtml: ts, label: 'login.page.ts', desc: 'src/pages · +4 −1' }),
     treeRow(3, { iconHtml: ts, label: 'auth.guard.ts', desc: 'src/guards · +6 −2' }),

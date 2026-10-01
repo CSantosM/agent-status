@@ -135,7 +135,11 @@ class SessionsPanel {
     if (s.files.length) {
       const item = new vscode.TreeItem('Files edited', vscode.TreeItemCollapsibleState.Collapsed);
       item.id = `${s.key}:files`;
-      item.description = String(s.files.length);
+      // Say what the changes are measured from, when all the files share it.
+      const bases = new Map(s.files.filter((f) => f.compare).map((f) => [f.compare.ref, f.compare]));
+      const [compare] = bases.size === 1 ? bases.values() : [];
+      item.description = [String(s.files.length), compare && sinceText(compare)].filter(Boolean).join(' · ');
+      item.tooltip = compare ? compare.description : undefined;
       item.iconPath = new vscode.ThemeIcon('files');
       item.contextValue = 'files';
       children.push({ kind: 'files', session: s, item });
@@ -145,24 +149,26 @@ class SessionsPanel {
     return children;
   }
 
-  // Each file carries its repository root, if any (for its changes), and its workspace folder (to
-  // place it).
+  // Each file carries its repository root and the commit its changes are measured from, if it is in
+  // a repository, and its workspace folder (to place it).
   async fileNodes(s) {
-    const byRoot = new Map();
+    const groups = new Map();
     for (const f of s.files) {
-      if (!f.root) continue; // Not in a git repository: there is no HEAD to compare with.
-      if (!byRoot.has(f.root)) byRoot.set(f.root, []);
-      byRoot.get(f.root).push(f.path);
+      if (!f.root) continue; // Not in a git repository: there is nothing to compare with.
+      const ref = f.compare ? f.compare.ref : 'HEAD';
+      const key = `${f.root}\0${ref}`;
+      if (!groups.has(key)) groups.set(key, { root: f.root, ref, files: [] });
+      groups.get(key).files.push(f.path);
     }
     const changes = new Map();
-    for (const [root, files] of byRoot) {
-      for (const [file, change] of await this.host.git.fileChanges(root, files)) changes.set(file, change);
+    for (const { root, ref, files } of groups.values()) {
+      for (const [file, change] of await this.host.git.fileChanges(root, files, ref)) changes.set(file, change);
     }
     return s.files.map((f) => {
       const change = changes.get(f.path);
       const item = new vscode.TreeItem(vscode.Uri.file(f.path), vscode.TreeItemCollapsibleState.None);
       item.id = `${s.key}:file:${f.path}`;
-      item.description = [folderOf(f.path, f.base || f.root), describeChange(change)].filter(Boolean).join(' · ');
+      item.description = [folderOf(f.path, f.folder || f.root), describeChange(change)].filter(Boolean).join(' · ');
       item.tooltip = f.path;
       item.contextValue = 'file';
       item.command = { command: 'agentStatus.openFileDiff', title: 'Open Changes', arguments: [s.key, f.path] };
@@ -178,6 +184,11 @@ function folderOf(file, base) {
   const dir = path.dirname(file);
   const home = os.homedir();
   return dir.startsWith(home + path.sep) ? `~${dir.slice(home.length)}` : dir;
+}
+
+function sinceText(compare) {
+  if (compare.label === 'HEAD') return 'not committed';
+  return `since ${compare.label}`;
 }
 
 function describeChange(change) {
