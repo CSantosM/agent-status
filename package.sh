@@ -59,6 +59,7 @@ cat > "$build/[Content_Types].xml" <<'EOF'
   <Default Extension=".js" ContentType="application/javascript" />
   <Default Extension=".md" ContentType="text/markdown" />
   <Default Extension=".wav" ContentType="audio/wav" />
+  <Default Extension=".svg" ContentType="image/svg+xml" />
   <Default Extension=".vsixmanifest" ContentType="text/xml" />
 </Types>
 EOF

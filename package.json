@@ -2,7 +2,7 @@
   "name": "agent-status",
   "displayName": "Agent Status",
   "description": "A status bar chip with one dot per running coding agent session (Claude Code for now): working, waiting or idle.",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -43,12 +43,26 @@
       {
         "command": "agentStatus.filterByStatus",
         "title": "Filter by Status",
-        "category": "Agent Status"
+        "category": "Agent Status",
+        "icon": "$(filter)"
       },
       {
         "command": "agentStatus.refresh",
         "title": "Refresh",
-        "category": "Agent Status"
+        "category": "Agent Status",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "agentStatus.groupByBranch",
+        "title": "Group by Branch",
+        "category": "Agent Status",
+        "icon": "$(git-branch)"
+      },
+      {
+        "command": "agentStatus.ungroup",
+        "title": "Show as List",
+        "category": "Agent Status",
+        "icon": "$(list-flat)"
       },
       {
         "command": "agentStatus.playFinishSound",
@@ -68,7 +82,20 @@
       {
         "command": "agentStatus.open",
         "title": "Open Session",
-        "category": "Agent Status"
+        "category": "Agent Status",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "agentStatus.openFileDiff",
+        "title": "Open Changes",
+        "category": "Agent Status",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "agentStatus.openFile",
+        "title": "Open File",
+        "category": "Agent Status",
+        "icon": "$(go-to-file)"
       },
       {
         "command": "agentStatus.setFilter",
@@ -85,6 +112,68 @@
         {
           "command": "agentStatus.setFilter",
           "when": "false"
+        },
+        {
+          "command": "agentStatus.openFileDiff",
+          "when": "false"
+        },
+        {
+          "command": "agentStatus.openFile",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "agentStatus.groupByBranch",
+          "when": "view == agentStatus.sessions && config.agentStatus.groupBy != branch",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentStatus.ungroup",
+          "when": "view == agentStatus.sessions && config.agentStatus.groupBy == branch",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentStatus.filterByStatus",
+          "when": "view == agentStatus.sessions",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentStatus.refresh",
+          "when": "view == agentStatus.sessions",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "agentStatus.open",
+          "when": "view == agentStatus.sessions && viewItem == session.openable",
+          "group": "inline"
+        },
+        {
+          "command": "agentStatus.openFileDiff",
+          "when": "view == agentStatus.sessions && viewItem == file",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentStatus.openFile",
+          "when": "view == agentStatus.sessions && viewItem == file",
+          "group": "inline@2"
+        },
+        {
+          "command": "agentStatus.open",
+          "when": "view == agentStatus.sessions && viewItem == session.openable",
+          "group": "1_open"
+        },
+        {
+          "command": "agentStatus.openFileDiff",
+          "when": "view == agentStatus.sessions && viewItem == file",
+          "group": "1_open@1"
+        },
+        {
+          "command": "agentStatus.openFile",
+          "when": "view == agentStatus.sessions && viewItem == file",
+          "group": "1_open@2"
         }
       ]
     },
@@ -139,6 +228,11 @@
           "default": "",
           "markdownDescription": "Absolute path of a `.wav` file to play instead of the built-in waiting sound. Try it with **Agent Status: Play Waiting Sound**."
         },
+        "agentStatus.notifyOnWaiting": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a notification with an Open button when a session in this window stops to wait for your decision."
+        },
         "agentStatus.order": {
           "type": "string",
           "enum": [
@@ -151,6 +245,19 @@
           ],
           "default": "stable",
           "description": "Order of the dots, the hover list and the session picker."
+        },
+        "agentStatus.groupBy": {
+          "type": "string",
+          "enum": [
+            "none",
+            "branch"
+          ],
+          "default": "none",
+          "enumDescriptions": [
+            "One list of sessions.",
+            "Keep sessions in the same branch or worktree together, in the chip, hover, picker and panel."
+          ],
+          "description": "How sessions are grouped. Sessions sharing a working tree end up together, which shows agents that may step on each other."
         },
         "agentStatus.icon": {
           "type": "string",
@@ -195,6 +302,38 @@
           "description": "Character shown for each status. A status bar item has a single text color, so colored emoji are what make the dots differ."
         }
       }
-    }
-  }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agentStatus",
+          "title": "Agent Status",
+          "icon": "media/activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "agentStatus": [
+        {
+          "id": "agentStatus.sessions",
+          "name": "Sessions",
+          "contextualTitle": "Agent Status"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "agentStatus.sessions",
+        "contents": "No agent sessions are running in this window.\n\nStart one in Claude Code, or show sessions from other windows with the [Scope setting](command:workbench.action.openSettings?%5B%22agentStatus.scope%22%5D).\n\n[Supported agents](https://github.com/CSantosM/agent-status#supported-agents)"
+      }
+    ]
+  },
+  "keywords": [
+    "agents",
+    "claude code",
+    "ai",
+    "status bar",
+    "multi-agent",
+    "sessions"
+  ]
 }

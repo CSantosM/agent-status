@@ -5,17 +5,13 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const {
-  readSessionRecords,
-  isAlive,
-  ownership,
-  localPidDomain,
-  filterByDomain,
-  dedupeSessions,
-} = require('./src/sessions');
-const { TitleCache, resolveTitle } = require('./src/titles');
+const { isAlive, ownership, localPidDomain, filterByDomain, dedupeSessions } = require('./src/sessions');
+const { createProviders } = require('./src/providers');
+const { ClaudeCodeOpener } = require('./src/providers/claude-code/open');
+const { createGit } = require('./src/git');
+const { SessionsPanel } = require('./src/panel');
 const { Sound } = require('./src/sound');
-const { formatElapsed, plural, truncate, escapeMarkdown, commandLink, toMillis, withTimeout } = require('./src/util');
+const { formatElapsed, plural, truncate, escapeMarkdown, commandLink, withTimeout } = require('./src/util');
 
 const CMD = {
   showSessions: 'agentStatus.showSessions',
@@ -26,8 +22,13 @@ const CMD = {
   showLog: 'agentStatus.showLog',
   open: 'agentStatus.open',
   setFilter: 'agentStatus.setFilter',
+  openFileDiff: 'agentStatus.openFileDiff',
+  openFile: 'agentStatus.openFile',
+  groupByBranch: 'agentStatus.groupByBranch',
+  ungroup: 'agentStatus.ungroup',
 };
-const CLAUDE_EXTENSION_ID = 'anthropic.claude-code';
+const VIEW_ID = 'agentStatus.sessions';
+const HEAD_SCHEME = 'agent-status-head';
 
 const STATUS = {
   waiting: { label: 'Waiting', rank: 0, color: '#F44336' },
@@ -48,12 +49,11 @@ const TICK_MS = 5000;
 const DEBOUNCE_MS = 150;
 const REFRESH_STUCK_MS = 15000;
 const TERMINAL_PID_TIMEOUT_MS = 1000;
-const OPEN_TIMEOUT_MS = 10000;
-const BORROW_TIMEOUT_MS = 3000;
+const DESCRIBE_TIMEOUT_MS = 3000;
 const MAX_HOVER_ROWS = 12;
 const MAX_TITLE = 80;
 const MAX_DETAIL = 140;
-const PENDING_RESTORE_KEY = 'pendingPreferredLocationRestore';
+const MAX_NOTIFICATIONS = 3;
 
 function activate(context) {
   const log = vscode.window.createOutputChannel('Agent Status', { log: true });
@@ -70,11 +70,14 @@ function deactivate() {}
 
 class AgentStatus {
   constructor(context, log) {
-    const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
     this.context = context;
     this.log = log;
-    this.sessionsDir = path.join(configDir, 'sessions');
-    this.titles = new TitleCache(path.join(configDir, 'projects'));
+    this.logged = new Map();
+    const logChange = (key, level, message) => this.logChange(key, level, message);
+
+    this.claudeOpener = new ClaudeCodeOpener({ vscode, context, log, logChange, openIn: () => settings().openIn });
+    this.providers = createProviders({ claudeCode: { opener: this.claudeOpener } });
+    this.git = createGit();
     this.sound = new Sound({
       builtIns: {
         finish: path.join(context.extensionPath, 'media', 'finish.wav'),
@@ -88,28 +91,36 @@ class AgentStatus {
     this.lastStatus = new Map();
     this.filter = validFilter(context.globalState.get('filter'));
     this.picker = undefined;
-    this.watcher = undefined;
-    this.watchedIno = undefined;
+    this.watchers = new Map();
     this.debounce = undefined;
     this.inFlight = undefined;
     this.again = false;
-    this.opening = Promise.resolve();
     this.rendered = {};
-    this.logged = new Map();
 
     // Lowest priority on the right keeps the chip next to the notifications bell.
     this.item = vscode.window.createStatusBarItem('agentStatus.chip', vscode.StatusBarAlignment.Right, -10000);
     this.item.name = 'Agent Status';
     this.item.command = CMD.showSessions;
 
+    this.panel = new SessionsPanel({
+      visible: () => this.visible(),
+      settings,
+      git: this.git,
+      whereElse,
+      activity,
+    });
+    this.view = vscode.window.createTreeView(VIEW_ID, { treeDataProvider: this.panel, showCollapseAll: true });
+
     const timer = setInterval(() => this.tick(), TICK_MS);
     context.subscriptions.push(
       this.item,
+      this.view,
+      this.panel,
       {
         dispose: () => {
           clearInterval(timer);
           clearTimeout(this.debounce);
-          this.unwatch();
+          for (const dir of [...this.watchers.keys()]) this.unwatch(dir);
           this.closePicker();
         },
       },
@@ -123,8 +134,15 @@ class AgentStatus {
         this.sound.play('waiting', settings().waitingSoundFile, { force: true }),
       ),
       vscode.commands.registerCommand(CMD.showLog, () => this.log.show()),
-      vscode.commands.registerCommand(CMD.open, (id) => this.open(id)),
+      vscode.commands.registerCommand(CMD.open, (target) => this.open(target)),
       vscode.commands.registerCommand(CMD.setFilter, (key) => this.setFilter(key)),
+      vscode.commands.registerCommand(CMD.openFileDiff, (target, file) => this.openFileDiff(target, file)),
+      vscode.commands.registerCommand(CMD.openFile, (target, file) => this.openFile(target, file)),
+      vscode.commands.registerCommand(CMD.groupByBranch, () => setGroupBy('branch')),
+      vscode.commands.registerCommand(CMD.ungroup, () => setGroupBy('none')),
+      vscode.workspace.registerTextDocumentContentProvider(HEAD_SCHEME, {
+        provideTextDocumentContent: (uri) => this.git.headContent(new URLSearchParams(uri.query).get('root'), uri.fsPath),
+      }),
       vscode.window.onDidOpenTerminal(() => this.schedule()),
       vscode.window.onDidCloseTerminal(() => this.schedule()),
       vscode.workspace.onDidChangeWorkspaceFolders(() => this.schedule()),
@@ -133,8 +151,7 @@ class AgentStatus {
       }),
     );
 
-    this.ready = this.restorePendingPreference().catch((err) => this.log.error(`Restoring preferences: ${err.message}`));
-    this.checkWatcher();
+    this.checkWatchers();
     this.refresh();
   }
 
@@ -149,39 +166,44 @@ class AgentStatus {
   // --- Data -----------------------------------------------------------------
 
   tick() {
-    // The periodic pass also catches crashed sessions (their file stays behind) and a watcher that
-    // stopped because the directory was deleted and created again.
-    this.checkWatcher();
+    // The periodic pass also catches crashed sessions (their record stays behind), transcripts that
+    // grew, and a watcher that stopped because its directory was deleted and created again.
+    this.checkWatchers();
     this.refresh();
   }
 
-  checkWatcher() {
+  checkWatchers() {
+    for (const dir of this.providers.flatMap((p) => p.watchDirs)) this.checkWatcher(dir);
+  }
+
+  checkWatcher(dir) {
     let ino;
     try {
-      ino = fs.statSync(this.sessionsDir).ino;
+      ino = fs.statSync(dir).ino;
     } catch {
-      this.unwatch(); // No sessions directory yet; the next tick looks again.
+      this.unwatch(dir); // Not there yet; the next tick looks again.
       return;
     }
-    if (this.watcher && ino === this.watchedIno) return;
-    this.unwatch();
+    const current = this.watchers.get(dir);
+    if (current && current.ino === ino) return;
+    this.unwatch(dir);
     try {
-      this.watcher = fs.watch(this.sessionsDir, () => this.schedule());
-      this.watcher.on('error', (err) => {
-        this.log.warn(`Watching ${this.sessionsDir} stopped: ${err.message}`);
-        this.unwatch();
+      const watcher = fs.watch(dir, () => this.schedule());
+      watcher.on('error', (err) => {
+        this.log.warn(`Watching ${dir} stopped: ${err.message}`);
+        this.unwatch(dir);
       });
-      this.watchedIno = ino;
+      this.watchers.set(dir, { watcher, ino });
     } catch (err) {
-      this.logChange('watch', 'warn', `Cannot watch ${this.sessionsDir}: ${err.message}. Refreshing every ${TICK_MS / 1000}s instead.`);
+      this.logChange(`watch:${dir}`, 'warn', `Cannot watch ${dir}: ${err.message}. Refreshing every ${TICK_MS / 1000}s instead.`);
     }
   }
 
-  unwatch() {
-    if (!this.watcher) return;
-    this.watcher.close();
-    this.watcher = undefined;
-    this.watchedIno = undefined;
+  unwatch(dir) {
+    const current = this.watchers.get(dir);
+    if (!current) return;
+    current.watcher.close();
+    this.watchers.delete(dir);
   }
 
   schedule() {
@@ -224,42 +246,76 @@ class AgentStatus {
 
   async load() {
     const cfg = settings();
-    const [records, shells] = await Promise.all([readSessionRecords(this.sessionsDir), terminalShells()]);
-    const live = filterByDomain(records, this.pidDomain).filter(isAlive);
-    this.titles.prune(new Set(live.map((r) => r.sessionId)));
-
+    const [lists, shells] = await Promise.all([Promise.all(this.providers.map((p) => this.listFrom(p))), terminalShells()]);
+    const live = filterByDomain(lists.flat(), this.pidDomain).filter(isAlive);
+    for (const provider of this.providers) {
+      provider.prune(new Set(live.filter((s) => s.provider === provider.id).map((s) => s.id)));
+    }
     const now = Date.now();
-    const built = await Promise.all(live.map((r) => this.toSession(r, shells, now)));
+    const built = await Promise.all(live.map((s) => this.toSession(s, shells, now)));
     const sessions = dedupeSessions(built).filter(
       (s) => cfg.scope === 'all' || s.owned || (cfg.scope === 'workspace' && s.inWorkspace),
     );
-    sessions.sort(cfg.order === 'status' ? byStatus : byStart);
-    sessions.forEach((s, i) => {
-      s.n = i + 1;
-    });
-    return sessions;
+    return arrange(sessions, cfg);
+  }
+
+  async listFrom(provider) {
+    try {
+      const sessions = await provider.listSessions();
+      this.logChange(`list:${provider.id}`, 'error', '');
+      return sessions;
+    } catch (err) {
+      this.logChange(`list:${provider.id}`, 'error', `${provider.label}: could not list sessions: ${err.message}`);
+      return [];
+    }
+  }
+
+  async describe(provider, record) {
+    try {
+      const result = await withTimeout(provider.describe(record), DESCRIBE_TIMEOUT_MS);
+      if (result.timedOut) {
+        this.logChange(`describe:${provider.id}`, 'warn', `${provider.label}: reading session details took over ${DESCRIBE_TIMEOUT_MS / 1000}s.`);
+        return {};
+      }
+      return result.value || {};
+    } catch (err) {
+      this.logChange(`describe:${provider.id}`, 'error', `${provider.label}: could not read session details: ${err.message}`);
+      return {};
+    }
   }
 
   async toSession(record, shells, now) {
+    const provider = this.providers.find((p) => p.id === record.provider);
     const status = Object.hasOwn(STATUS, record.status) ? record.status : 'unknown';
     const inWorkspace = workspaceFolderOf(record.cwd) !== undefined;
     const { owned, terminalPid } = ownership(record, { shellPids: shells, hostPid: process.pid, inWorkspace });
-    const statusSince = toMillis(record.statusUpdatedAt) || toMillis(record.updatedAt) || toMillis(record.startedAt) || now;
+    const [details, repo] = await Promise.all([this.describe(provider, record), this.git.repoInfo(record.cwd)]);
+    const statusSince = record.statusUpdatedAt || record.updatedAt || record.startedAt || now;
+    const action = details.action && typeof details.action.text === 'string' ? details.action : undefined;
     return {
-      id: record.sessionId,
+      key: `${record.provider}:${record.id}`,
+      id: record.id,
+      providerId: provider.id,
+      providerLabel: provider.label,
       pid: record.pid,
-      title: resolveTitle(record, await this.titles.get(record)),
+      cwd: record.cwd,
+      title: details.title || path.basename(record.cwd) || record.id.slice(0, 8),
+      action: action && { text: action.text, icon: /^[a-z0-9-]+(~spin)?$/.test(action.icon) ? action.icon : 'tools' },
+      files: Array.isArray(details.files) ? details.files : [],
+      repo,
+      branchLabel: repo ? repo.label : details.branch,
       folder: folderLabel(record.cwd),
       inWorkspace,
       status,
       statusLabel: status === 'unknown' && record.status ? truncate(String(record.status), 20) : STATUS[status].label,
-      waitingFor: status === 'waiting' && typeof record.waitingFor === 'string' ? record.waitingFor : undefined,
+      waitingFor: status === 'waiting' ? record.waitingFor : undefined,
       since: now - statusSince,
-      startedAt: toMillis(record.startedAt) || 0,
-      updatedAt: toMillis(record.updatedAt) || statusSince,
-      entrypoint: record.entrypoint,
+      startedAt: record.startedAt || 0,
+      updatedAt: record.updatedAt || statusSince,
+      surface: record.surface,
       owned,
       terminal: terminalPid === undefined ? undefined : shells.get(terminalPid),
+      openable: terminalPid !== undefined || (owned && provider.canOpen(record)),
     };
   }
 
@@ -269,25 +325,40 @@ class AgentStatus {
 
   // Between two refreshes, a working session that turns idle finished its turn, and one that turns
   // waiting stopped for your decision. Only this window's sessions count, so several open windows do
-  // not all sound for the same session.
+  // not all react to the same session.
   announceTransitions() {
     const cfg = settings();
     const changedTo = (status) =>
-      this.sessions.some((s) => s.owned && s.status === status && this.lastStatus.get(s.id) === 'busy');
+      this.sessions.filter((s) => s.owned && s.status === status && this.lastStatus.get(s.key) === 'busy');
     const waiting = changedTo('waiting');
     const finished = changedTo('idle');
-    this.lastStatus = new Map(this.sessions.map((s) => [s.id, s.status]));
+    this.lastStatus = new Map(this.sessions.map((s) => [s.key, s.status]));
     // One sound at a time; a session that needs you outranks one that finished.
-    if (waiting && cfg.soundOnWaiting) this.sound.play('waiting', cfg.waitingSoundFile);
-    else if (finished && cfg.soundOnFinish) this.sound.play('finish', cfg.finishSoundFile);
+    if (waiting.length && cfg.soundOnWaiting) this.sound.play('waiting', cfg.waitingSoundFile);
+    else if (finished.length && cfg.soundOnFinish) this.sound.play('finish', cfg.finishSoundFile);
+    if (cfg.notifyOnWaiting) waiting.slice(0, MAX_NOTIFICATIONS).forEach((s) => this.notifyWaiting(s));
   }
 
-  // --- Status bar chip and hover --------------------------------------------
+  async notifyWaiting(s) {
+    const detail = s.waitingFor ? `: ${truncate(s.waitingFor, MAX_DETAIL)}` : '.';
+    const choice = await vscode.window.showInformationMessage(
+      `"${truncate(s.title, MAX_TITLE)}" needs your decision${detail}`,
+      'Open',
+      'Turn Off',
+    );
+    if (choice === 'Open') this.open(s.key);
+    if (choice === 'Turn Off') {
+      vscode.workspace.getConfiguration('agentStatus').update('notifyOnWaiting', false, vscode.ConfigurationTarget.Global);
+    }
+  }
+
+  // --- Status bar chip, hover and panel ---------------------------------------
 
   render() {
     const cfg = settings();
     const all = this.sessions;
     const visible = this.visible();
+    this.renderView(all);
     if (!all.length && cfg.hideWhenEmpty) {
       this.item.hide();
       this.rendered.visible = false;
@@ -295,8 +366,13 @@ class AgentStatus {
     }
 
     const shown = visible.slice(0, cfg.maxDots);
+    let dots = '';
+    shown.forEach((s, i) => {
+      if (cfg.groupBy === 'branch' && i > 0 && s.group.key !== shown[i - 1].group.key) dots += ' · ';
+      dots += cfg.dots[s.status];
+    });
     let text = `$(${cfg.icon})`;
-    if (shown.length) text += ' ' + shown.map((s) => cfg.dots[s.status]).join('');
+    if (dots) text += ` ${dots}`;
     if (visible.length > shown.length) text += ` +${visible.length - shown.length}`;
     if (this.filter !== 'all') text += ' $(filter)';
     const color = !all.length ? 'disabled' : (cfg.iconReflectsStatus && urgentColor(all)) || '';
@@ -311,7 +387,7 @@ class AgentStatus {
     if (tooltip !== this.rendered.tooltip) {
       const md = new vscode.MarkdownString(tooltip);
       md.supportThemeIcons = true;
-      md.isTrusted = { enabledCommands: [CMD.open, CMD.setFilter, CMD.showSessions] };
+      md.isTrusted = { enabledCommands: [CMD.open, CMD.setFilter, CMD.showSessions, `${VIEW_ID}.focus`] };
       this.item.tooltip = md;
       this.rendered.tooltip = tooltip;
     }
@@ -322,11 +398,18 @@ class AgentStatus {
     }
   }
 
+  renderView(all) {
+    const waiting = all.filter((s) => s.status === 'waiting').length;
+    this.view.badge = waiting ? { value: waiting, tooltip: `${plural(waiting, 'session')} waiting for you` } : undefined;
+    this.view.description = this.filter === 'all' ? undefined : `${filterLabel(this.filter)} only`;
+    this.panel.refresh();
+  }
+
   tooltip(all, visible, cfg) {
     const where = SCOPE_TEXT[cfg.scope];
-    if (!all.length) return `**Claude Code** · no sessions running ${where}`;
+    if (!all.length) return `**Agents** · no sessions running ${where}`;
 
-    let header = `**Claude Code** · ${plural(all.length, 'session')} ${where}`;
+    let header = `**Agents** · ${plural(all.length, 'session')} ${where}`;
     if (this.filter !== 'all') header += ` · showing ${visible.length}`;
 
     const filters = FILTERS.map((f) => {
@@ -336,27 +419,41 @@ class AgentStatus {
         : commandLink(text, CMD.setFilter, [f.key], `Show ${f.label.toLowerCase()} sessions`);
     }).join(' · ');
 
-    let rows = visible.length
-      ? visible
-          .slice(0, MAX_HOVER_ROWS)
-          .map((s) => this.hoverRow(s, cfg))
-          .join('\n\n')
-      : '_No sessions with this status._';
+    const grouped = cfg.groupBy === 'branch';
+    const showProvider = new Set(all.map((s) => s.providerId)).size > 1;
+    const blocks = [];
+    visible.slice(0, MAX_HOVER_ROWS).forEach((s, i, shown) => {
+      if (grouped && (i === 0 || s.group.key !== shown[i - 1].group.key)) {
+        const description = s.group.description ? ` · ${escapeMarkdown(s.group.description)}` : '';
+        blocks.push(`$(git-branch) **${escapeMarkdown(s.group.label)}**${description}`);
+      }
+      blocks.push(this.hoverRow(s, cfg, { grouped, showProvider }));
+    });
+    let rows = blocks.length ? blocks.join('\n\n') : '_No sessions with this status._';
     if (visible.length > MAX_HOVER_ROWS) {
       rows += `\n\n_…and ${visible.length - MAX_HOVER_ROWS} more in the_ ${commandLink('session picker', CMD.showSessions)}`;
     }
 
-    const footer = `${commandLink('$(list-selection) Open session picker', CMD.showSessions)} · or click the chip`;
+    const footer = [
+      commandLink('$(list-selection) Open session picker', CMD.showSessions),
+      commandLink('$(layout-sidebar-left) Show panel', `${VIEW_ID}.focus`),
+    ].join(' · ');
     return [header, `Filter: ${filters}`, '---', rows, '---', footer].join('\n\n');
   }
 
-  hoverRow(s, cfg) {
+  hoverRow(s, cfg, { grouped, showProvider }) {
     const title = escapeMarkdown(truncate(s.title, MAX_TITLE));
+    const meta = [s.statusLabel, formatElapsed(s.since), s.folder];
+    if (!grouped && s.branchLabel) meta.push(s.branchLabel);
+    if (showProvider) meta.push(s.providerLabel);
+    if (whereElse(s)) meta.push(whereElse(s));
     const lines = [
-      `${cfg.dots[s.status]} \`${s.n}\` ${commandLink(title, CMD.open, [s.id], 'Open this session')}`,
-      escapeMarkdown(describe(s)),
+      `${cfg.dots[s.status]} \`${s.n}\` ${commandLink(title, CMD.open, [s.key], 'Open this session')}`,
+      escapeMarkdown(meta.join(' · ')),
     ];
-    if (s.waitingFor) lines.push(`_${escapeMarkdown(truncate(s.waitingFor, MAX_DETAIL))}_`);
+    const doing = activity(s);
+    if (s.status === 'waiting' && doing) lines.push(`_${escapeMarkdown(truncate(doing, MAX_DETAIL))}_`);
+    else if (doing) lines.push(`$(${s.action ? s.action.icon : 'loading~spin'}) ${escapeMarkdown(truncate(doing, MAX_DETAIL))}`);
     return lines.join('  \n');
   }
 
@@ -368,27 +465,40 @@ class AgentStatus {
       return;
     }
     const qp = vscode.window.createQuickPick();
-    qp.placeholder = 'Search by title, folder or status';
+    qp.placeholder = 'Search by title, folder, branch or status';
     qp.matchOnDescription = true;
     qp.matchOnDetail = true;
 
     const rebuild = () => {
       const cfg = settings();
+      const grouped = cfg.groupBy === 'branch';
       const filtered = this.filter !== 'all';
-      qp.title = 'Claude Code Sessions' + (filtered ? ` · ${filterLabel(this.filter)}` : '');
+      qp.title = 'Agent Sessions' + (filtered ? ` · ${filterLabel(this.filter)}` : '');
       qp.buttons = [{ iconPath: new vscode.ThemeIcon(filtered ? 'filter-filled' : 'filter'), tooltip: 'Filter by status' }];
 
-      const previous = qp.activeItems[0] && qp.activeItems[0].session.id;
-      const items = this.visible().map((s) => ({
-        label: `${cfg.dots[s.status]} ${s.n}  ${truncate(s.title, MAX_TITLE)}`,
-        description: `${s.statusLabel} · ${formatElapsed(s.since)}`,
-        detail: [s.waitingFor && truncate(s.waitingFor, MAX_DETAIL), s.folder, whereElse(s)].filter(Boolean).join(' · '),
-        session: s,
-      }));
+      const previous = qp.activeItems[0] && qp.activeItems[0].session && qp.activeItems[0].session.key;
+      const items = [];
+      this.visible().forEach((s, i, list) => {
+        if (grouped && (i === 0 || s.group.key !== list[i - 1].group.key)) {
+          items.push({ label: s.group.label, kind: vscode.QuickPickItemKind.Separator });
+        }
+        const doing = activity(s);
+        items.push({
+          label: `${cfg.dots[s.status]} ${s.n}  ${truncate(s.title, MAX_TITLE)}`,
+          description: `${s.statusLabel} · ${formatElapsed(s.since)}`,
+          detail: [doing && truncate(doing, MAX_DETAIL), s.folder, grouped ? undefined : s.branchLabel, whereElse(s)]
+            .filter(Boolean)
+            .join(' · '),
+          session: s,
+        });
+      });
       qp.items = items;
+      const sessionItems = items.filter((i) => i.session);
       // Keep the highlighted row across live updates; otherwise start on the first session that needs you.
       const active =
-        items.find((i) => i.session.id === previous) || items.find((i) => i.session.status === 'waiting') || items[0];
+        sessionItems.find((i) => i.session.key === previous) ||
+        sessionItems.find((i) => i.session.status === 'waiting') ||
+        sessionItems[0];
       if (active) qp.activeItems = [active];
     };
 
@@ -399,7 +509,7 @@ class AgentStatus {
     qp.onDidAccept(() => {
       const item = qp.selectedItems[0] || qp.activeItems[0];
       this.closePicker();
-      if (item) this.open(item.session.id);
+      if (item && item.session) this.open(item.session.key);
     });
     qp.onDidHide(() => this.closePicker());
 
@@ -420,7 +530,7 @@ class AgentStatus {
     const cfg = settings();
     const qp = vscode.window.createQuickPick();
     qp.title = 'Filter by Status';
-    qp.placeholder = 'Choose which sessions the chip shows';
+    qp.placeholder = 'Choose which sessions the chip and the panel show';
     if (fromSessionPicker) qp.buttons = [vscode.QuickInputButtons.Back];
 
     const items = FILTERS.map((f) => ({
@@ -457,12 +567,14 @@ class AgentStatus {
     if (this.picker) this.picker.rebuild();
   }
 
-  // --- Opening --------------------------------------------------------------
+  // --- Opening sessions and files ---------------------------------------------
 
-  async open(id) {
-    const s = this.sessions.find((x) => x.id === id);
+  // target: a session key, or a panel node holding a session.
+  async open(target) {
+    const key = typeof target === 'string' ? target : target && target.session && target.session.key;
+    const s = this.sessions.find((x) => x.key === key);
     if (!s) {
-      vscode.window.showWarningMessage('That Claude Code session is no longer running.');
+      vscode.window.showWarningMessage('That agent session is no longer running.');
       return;
     }
     if (s.terminal) {
@@ -474,108 +586,57 @@ class AgentStatus {
       vscode.window.showInformationMessage(`"${truncate(s.title, MAX_TITLE)}" is running in ${whereElse(s)}. Switch there to open it.`);
       return;
     }
-    if (s.entrypoint !== 'claude-vscode') {
+    if (s.surface !== 'editor') {
       vscode.window.showInformationMessage(`"${truncate(s.title, MAX_TITLE)}" is not attached to a chat or a terminal in this window.`);
       return;
     }
-    if (!vscode.extensions.getExtension(CLAUDE_EXTENSION_ID)) {
-      vscode.window.showWarningMessage('The Claude Code extension is not installed or is disabled.');
+    const provider = this.providers.find((p) => p.id === s.providerId);
+    if (!provider.canOpen(s)) {
+      vscode.window.showWarningMessage(provider.unavailableReason());
       return;
     }
     try {
-      await this.showInClaude(s.id);
+      await provider.open(s);
     } catch (err) {
-      this.log.error(`Opening session ${s.id}: ${err.stack || err}`);
+      this.log.error(`Opening session ${s.key}: ${err.stack || err}`);
       vscode.window.showErrorMessage(`Could not open the session: ${err.message}`);
     }
   }
 
-  // Serialized so two quick clicks cannot interleave their preference changes.
-  showInClaude(id) {
-    const run = this.opening.then(() => this.revealInClaude(id));
-    this.opening = run.catch(() => {});
-    return run;
+  // target: a session key with the file path, or a panel file node.
+  resolveFile(target, file) {
+    if (target && typeof target === 'object' && target.kind === 'file') return { session: target.session, file: target.file.path };
+    return { session: this.sessions.find((s) => s.key === target), file };
   }
 
-  async revealInClaude(id) {
-    await this.ready;
-    // The same call Claude Code's own session list makes: it reveals the session's tab if it already
-    // has one, otherwise opens it where claudeCode.preferredLocation says. Without the "programmatic"
-    // option the command always opens a tab and switches that preference to it.
-    const open = () =>
-      vscode.commands.executeCommand('claude-vscode.editor.open', id, undefined, undefined, undefined, true, {
-        programmatic: 'honor-preferred-location',
-      });
-
-    const claude = vscode.workspace.getConfiguration('claudeCode');
-    const inspected = claude.inspect('preferredLocation') || {};
-    const setInWorkspace = inspected.workspaceValue !== undefined || inspected.workspaceFolderValue !== undefined;
-    if (settings().openIn !== 'sidebar' || claude.get('preferredLocation') === 'sidebar' || setInWorkspace) {
-      if (setInWorkspace && settings().openIn === 'sidebar') {
-        this.logChange('workspace-pref', 'warn', "Claude Code's Preferred Location is set in this workspace's settings, which this extension never edits; opening sessions where it says.");
-      }
-      await this.runOpen(open);
+  // The file's changes against HEAD in the session's repository.
+  async openFileDiff(target, filePath) {
+    const { session, file } = this.resolveFile(target, filePath);
+    if (!file) return;
+    const fileUri = vscode.Uri.file(file);
+    const repo = session && session.repo;
+    const exists = fs.existsSync(file);
+    if (!repo) {
+      await this.openFile(target, filePath);
       return;
     }
-    await this.openInSidebar(open, inspected.globalValue);
-  }
-
-  // Claude Code shows a session in its sidebar only when preferredLocation is "sidebar" at the moment
-  // of the call (it reads the setting then and does not react to changes). Borrow that value for the
-  // call and put the user's back right after, so new chats keep opening where they chose. A marker in
-  // globalState lets the next activation put it back if VS Code dies in between.
-  async openInSidebar(open, previous) {
-    const claude = vscode.workspace.getConfiguration('claudeCode');
-    try {
-      await this.context.globalState.update(PENDING_RESTORE_KEY, { previous });
-      await claude.update('preferredLocation', 'sidebar', vscode.ConfigurationTarget.Global);
-    } catch (err) {
-      await this.context.globalState.update(PENDING_RESTORE_KEY, undefined);
-      this.log.warn(`Could not switch Claude Code to its sidebar for this click: ${err.message}`);
-      await this.runOpen(open);
+    const headUri = fileUri.with({ scheme: HEAD_SCHEME, query: new URLSearchParams({ root: repo.root }).toString() });
+    if (!exists) {
+      await vscode.commands.executeCommand('vscode.open', headUri); // Deleted: show what HEAD had.
       return;
     }
-    try {
-      // Claude Code has read the setting once the command starts, so a slow command need not keep
-      // the user's preference borrowed.
-      const result = await withTimeout(open(), BORROW_TIMEOUT_MS);
-      if (result.timedOut) this.log.warn(`Claude Code took over ${BORROW_TIMEOUT_MS / 1000}s to open the session.`);
-    } finally {
-      await this.restorePreference(previous);
-    }
+    const title = `${path.basename(file)} (HEAD ↔ Working Tree) · ${truncate(session.title, 40)}`;
+    await vscode.commands.executeCommand('vscode.diff', headUri, fileUri, title);
   }
 
-  async restorePreference(previous) {
-    try {
-      await vscode.workspace
-        .getConfiguration('claudeCode')
-        .update('preferredLocation', previous, vscode.ConfigurationTarget.Global);
-      await this.context.globalState.update(PENDING_RESTORE_KEY, undefined);
-    } catch (err) {
-      this.log.error(`Could not restore Claude Code's Preferred Location: ${err.stack || err}`);
-      const choice = await vscode.window.showErrorMessage(
-        `Could not restore Claude Code's Preferred Location to "${previous ?? 'panel'}": ${err.message}`,
-        'Open User Settings',
-      );
-      if (choice) vscode.commands.executeCommand('workbench.action.openSettingsJson');
+  async openFile(target, filePath) {
+    const { file } = this.resolveFile(target, filePath);
+    if (!file) return;
+    if (!fs.existsSync(file)) {
+      vscode.window.showWarningMessage(`${file} no longer exists.`);
+      return;
     }
-  }
-
-  async restorePendingPreference() {
-    const pending = this.context.globalState.get(PENDING_RESTORE_KEY);
-    if (!pending) return;
-    const inspected = vscode.workspace.getConfiguration('claudeCode').inspect('preferredLocation') || {};
-    if (inspected.globalValue === 'sidebar' && pending.previous !== 'sidebar') {
-      await this.restorePreference(pending.previous);
-      this.log.info(`Restored Claude Code's Preferred Location to "${pending.previous ?? 'default'}" after an interrupted click.`);
-    } else {
-      await this.context.globalState.update(PENDING_RESTORE_KEY, undefined);
-    }
-  }
-
-  async runOpen(open) {
-    const result = await withTimeout(open(), OPEN_TIMEOUT_MS);
-    if (result.timedOut) this.log.warn(`Claude Code took over ${OPEN_TIMEOUT_MS / 1000}s to open the session.`);
+    await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(file));
   }
 }
 
@@ -616,6 +677,7 @@ function settings() {
   return {
     scope: oneOf('scope', ['window', 'workspace', 'all']),
     order: oneOf('order', ['stable', 'status']),
+    groupBy: oneOf('groupBy', ['none', 'branch']),
     openIn: oneOf('openIn', ['sidebar', 'preferredLocation']),
     icon: typeof icon === 'string' && /^[a-z0-9-]+$/.test(icon) ? icon : 'robot',
     iconReflectsStatus: c.get('iconReflectsStatus') !== false,
@@ -623,10 +685,15 @@ function settings() {
     hideWhenEmpty: c.get('hideWhenEmpty') === true,
     soundOnFinish: c.get('soundOnFinish') !== false,
     soundOnWaiting: c.get('soundOnWaiting') !== false,
+    notifyOnWaiting: c.get('notifyOnWaiting') !== false,
     finishSoundFile: soundFile('finishSoundFile'),
     waitingSoundFile: soundFile('waitingSoundFile'),
     dots,
   };
+}
+
+function setGroupBy(value) {
+  return vscode.workspace.getConfiguration('agentStatus').update('groupBy', value, vscode.ConfigurationTarget.Global);
 }
 
 function workspaceFolderOf(cwd) {
@@ -647,7 +714,40 @@ function folderLabel(cwd) {
   return cwd.startsWith(home + path.sep) ? `~${cwd.slice(home.length)}` : cwd;
 }
 
-// --- Formatting -----------------------------------------------------------------
+// --- Ordering and formatting --------------------------------------------------------
+
+// Sorts the sessions, keeps each branch or worktree together when grouping, and numbers them in the
+// order they are shown everywhere.
+function arrange(sessions, cfg) {
+  sessions.sort(cfg.order === 'status' ? byStatus : byStart);
+  for (const s of sessions) s.group = groupOf(s);
+  let arranged = sessions;
+  if (cfg.groupBy === 'branch') {
+    const groups = new Map();
+    for (const s of sessions) {
+      if (!groups.has(s.group.key)) groups.set(s.group.key, []);
+      groups.get(s.group.key).push(s);
+    }
+    arranged = [...groups.values()].flat();
+  }
+  arranged.forEach((s, i) => {
+    s.n = i + 1;
+  });
+  return arranged;
+}
+
+// Sessions in the same working tree share a group; each worktree is a group of its own.
+function groupOf(s) {
+  if (s.repo) {
+    return {
+      key: `repo:${s.repo.root}`,
+      label: s.repo.label,
+      description: s.repo.worktree ? `${s.repo.name} · worktree` : s.repo.name,
+      root: s.repo.root,
+    };
+  }
+  return { key: 'none', label: 'Not in a git repository', description: '', root: undefined };
+}
 
 function byStart(a, b) {
   return a.startedAt - b.startedAt || a.pid - b.pid;
@@ -657,17 +757,17 @@ function byStatus(a, b) {
   return STATUS[a.status].rank - STATUS[b.status].rank || byStart(a, b);
 }
 
-function whereElse(s) {
-  if (s.owned) return undefined;
-  return s.entrypoint === 'claude-vscode' ? 'another VS Code window' : 'a terminal outside VS Code';
+// What the session is doing right now, in words: its current tool call while it works, or what it
+// waits for.
+function activity(s) {
+  if (s.status === 'waiting') return s.waitingFor || 'Waiting for your decision';
+  if (s.status === 'busy') return s.action ? s.action.text : 'Thinking…';
+  return undefined;
 }
 
-function describe(s) {
-  const parts = [s.statusLabel, formatElapsed(s.since), s.folder];
-  if (s.terminal) parts.push('terminal');
-  const elsewhere = whereElse(s);
-  if (elsewhere) parts.push(elsewhere);
-  return parts.join(' · ');
+function whereElse(s) {
+  if (s.owned) return undefined;
+  return s.surface === 'editor' ? 'another VS Code window' : 'a terminal outside VS Code';
 }
 
 function urgentColor(sessions) {
@@ -677,11 +777,11 @@ function urgentColor(sessions) {
 }
 
 function accessibleSummary(sessions) {
-  if (!sessions.length) return 'Claude Code: no sessions';
+  if (!sessions.length) return 'Agent Status: no sessions';
   const parts = FILTERS.filter((f) => f.key !== 'all')
     .map((f) => `${countFor(sessions, f.key)} ${f.label.toLowerCase()}`)
     .join(', ');
-  return `Claude Code sessions: ${parts}`;
+  return `Agent sessions: ${parts}`;
 }
 
 function countFor(sessions, key) {

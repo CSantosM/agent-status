@@ -16,6 +16,8 @@ function createVscode() {
   const state = {
     handlers: {},
     items: [],
+    views: [],
+    contentProviders: {},
     messages: [],
     executed: [],
     updates: [],
@@ -28,6 +30,10 @@ function createVscode() {
     config: { agentStatus: {}, claudeCode: { global: { preferredLocation: 'panel' }, workspace: {} } },
   };
   const disposable = () => ({ dispose() {} });
+  const respond = (level, message, buttons) => {
+    state.messages.push([level, message, buttons]);
+    return state.respond ? state.respond(message, buttons) : undefined;
+  };
   const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 };
 
   const getConfiguration = (section) => ({
@@ -46,6 +52,12 @@ function createVscode() {
     async update(key, value, target) {
       if (state.failUpdates) throw new Error('Unable to write into user settings');
       state.updates.push({ section, key, value, target });
+      if (section !== 'claudeCode') {
+        state.config[section] = state.config[section] || {};
+        if (value === undefined) delete state.config[section][key];
+        else state.config[section][key] = value;
+        return;
+      }
       const bucket = target === ConfigurationTarget.Workspace ? state.config.claudeCode.workspace : state.config.claudeCode.global;
       if (value === undefined) delete bucket[key];
       else bucket[key] = value;
@@ -69,9 +81,56 @@ function createVscode() {
       constructor(value = '') {
         this.value = value;
       }
+      appendMarkdown(text) {
+        this.value += text;
+        return this;
+      }
+      appendText(text) {
+        this.value += text;
+        return this;
+      }
     },
     QuickInputButtons: { Back: { id: 'back' } },
+    QuickPickItemKind: { Separator: -1, Default: 0 },
+    TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+    TreeItem: class {
+      constructor(labelOrUri, collapsibleState) {
+        if (typeof labelOrUri === 'string') this.label = labelOrUri;
+        else this.resourceUri = labelOrUri;
+        this.collapsibleState = collapsibleState;
+      }
+    },
+    EventEmitter: class {
+      constructor() {
+        this.listeners = [];
+        this.event = (listener) => {
+          this.listeners.push(listener);
+          return { dispose() {} };
+        };
+      }
+      fire(value) {
+        this.listeners.forEach((listener) => listener(value));
+      }
+      dispose() {}
+    },
+    Uri: {
+      file: (fsPath) => {
+        const uri = {
+          scheme: 'file',
+          fsPath,
+          path: fsPath,
+          query: '',
+          with: (change) => ({ ...uri, ...change }),
+        };
+        return uri;
+      },
+    },
     window: {
+      createTreeView: (id, options) => {
+        const view = { id, provider: options.treeDataProvider, badge: undefined, description: undefined, dispose() {} };
+        state.views.push(view);
+        return view;
+      },
       createOutputChannel: () => ({ info() {}, warn() {}, error() {}, debug() {}, show() {}, dispose() {} }),
       createStatusBarItem: () => {
         const item = {
@@ -92,9 +151,10 @@ function createVscode() {
       },
       onDidOpenTerminal: disposable,
       onDidCloseTerminal: disposable,
-      showInformationMessage: async (message) => void state.messages.push(['info', message]),
-      showWarningMessage: async (message) => void state.messages.push(['warn', message]),
-      showErrorMessage: async (message) => void state.messages.push(['error', message]),
+      // state.respond(message, buttons) picks the button a test "clicks".
+      showInformationMessage: async (message, ...buttons) => respond('info', message, buttons),
+      showWarningMessage: async (message, ...buttons) => respond('warn', message, buttons),
+      showErrorMessage: async (message, ...buttons) => respond('error', message, buttons),
     },
     commands: {
       registerCommand(id, handler) {
@@ -113,6 +173,10 @@ function createVscode() {
         return state.workspaceFolders;
       },
       getConfiguration,
+      registerTextDocumentContentProvider: (scheme, provider) => {
+        state.contentProviders[scheme] = provider;
+        return disposable();
+      },
       onDidChangeWorkspaceFolders: disposable,
       onDidChangeConfiguration: disposable,
     },

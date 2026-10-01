@@ -2,7 +2,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const childProcess = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const {
   createVscode,
@@ -17,6 +19,7 @@ const {
 
 const { state } = createVscode();
 const extension = require('../extension');
+const { escapeMarkdown } = require('../src/util');
 
 const processes = [];
 test.after(() => processes.forEach((p) => p.kill()));
@@ -24,6 +27,9 @@ test.after(() => processes.forEach((p) => p.kill()));
 function setup(t, { preferred = 'panel', context = createContext() } = {}) {
   Object.assign(state, {
     items: [],
+    views: [],
+    contentProviders: {},
+    respond: undefined,
     messages: [],
     executed: [],
     updates: [],
@@ -42,16 +48,37 @@ function setup(t, { preferred = 'panel', context = createContext() } = {}) {
     processes.push(proc);
     return { proc, record: writeSession(claudeDir, proc, fields) };
   };
+  // Transcript entries for a session, where Claude Code would write them.
+  const transcript = (record, entries) => {
+    const file = path.join(claudeDir, 'projects', record.cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${record.sessionId}.jsonl`);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.appendFileSync(file, entries.map((e) => JSON.stringify(e) + '\n').join(''));
+  };
   const start = async () => {
     extension.activate(context);
     await refresh();
   };
-  return { context, claudeDir, session, start };
+  return { context, claudeDir, session, transcript, start };
 }
 
 const refresh = () => state.handlers['agentStatus.refresh']();
-const open = (id) => state.handlers['agentStatus.open'](id);
+const open = (id) => state.handlers['agentStatus.open'](`claude-code:${id}`);
 const chip = () => state.items[state.items.length - 1];
+const view = () => state.views[state.views.length - 1];
+const edit = (file) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Edit', input: { file_path: file } }] } });
+
+function git(cwd, ...args) {
+  childProcess.execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', ...args], { cwd, stdio: 'ignore' });
+}
+
+function createRepo() {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-status-repo-')));
+  git(root, 'init', '-q', '-b', 'main');
+  fs.writeFileSync(path.join(root, 'auth.ts'), 'export const a = 1;\n');
+  git(root, 'add', '.');
+  git(root, 'commit', '-q', '-m', 'init');
+  return root;
+}
 
 test('shows one dot per live session and skips dead or reused PIDs', async (t) => {
   const { claudeDir, session, start } = setup(t);
@@ -235,4 +262,91 @@ test('falls back to defaults for invalid settings', async (t) => {
   session({ status: 'busy' });
   await start();
   assert.equal(chip().text, '$(robot) 🟡');
+});
+
+test('notifies when a session stops to wait for you, and opens it from the notification', async (t) => {
+  const { claudeDir, session, start } = setup(t);
+  const { proc, record } = session({ status: 'busy' });
+  await start();
+  state.respond = (message, buttons) => (buttons.includes('Open') ? 'Open' : undefined);
+  writeSession(claudeDir, proc, { ...record, status: 'waiting', waitingFor: 'Permission to run Bash' });
+  await refresh();
+  await delay(30);
+  const [level, message, buttons] = state.messages[0];
+  assert.equal(level, 'info');
+  assert.match(message, /needs your decision: Permission to run Bash/);
+  assert.deepEqual(buttons, ['Open', 'Turn Off']);
+  assert.equal(state.executed[0].id, 'claude-vscode.editor.open');
+  assert.equal(view().badge.value, 1, 'the panel badge counts waiting sessions');
+});
+
+test('"Turn Off" in the notification disables it', async (t) => {
+  const { claudeDir, session, start } = setup(t);
+  const { proc, record } = session({ status: 'busy' });
+  await start();
+  state.respond = () => 'Turn Off';
+  writeSession(claudeDir, proc, { ...record, status: 'waiting' });
+  await refresh();
+  await delay(30);
+  assert.equal(state.config.agentStatus.notifyOnWaiting, false);
+});
+
+test('shows what a working session is doing', async (t) => {
+  const { session, transcript, start } = setup(t);
+  const { record } = session({ status: 'busy' });
+  transcript(record, [edit('/tmp/project/auth.ts')]);
+  await start();
+  assert.ok(chip().tooltip.value.includes(`$(edit) ${escapeMarkdown('Editing auth.ts')}`));
+});
+
+test('groups sessions by branch and worktree when asked', async (t) => {
+  const { session, start } = setup(t);
+  const root = createRepo();
+  const tree = path.join(root, '.claude', 'worktrees', 'feature');
+  git(root, 'worktree', 'add', '-q', '-b', 'feat/x', tree);
+  session({ status: 'busy', cwd: root, startedAt: 1 });
+  session({ status: 'busy', cwd: tree, startedAt: 2 });
+  session({ status: 'idle', cwd: root, startedAt: 3 });
+  state.config.agentStatus.groupBy = 'branch';
+  await start();
+  assert.equal(chip().text, '$(robot) 🟡🟢 · 🟡', 'the two sessions sharing main sit together');
+  const hover = chip().tooltip.value;
+  assert.ok(hover.includes('$(git-branch) **main**'));
+  assert.ok(hover.includes(`$(git-branch) **feat/x** · ${escapeMarkdown(`${path.basename(root)} · worktree`)}`));
+
+  const groups = await view().provider.getChildren();
+  assert.deepEqual(groups.map((g) => g.item.label), ['main', 'feat/x']);
+  assert.equal((await view().provider.getChildren(groups[0])).length, 2);
+});
+
+test('the panel lists edited files with their changes and opens a diff against HEAD', async (t) => {
+  const { session, transcript, start } = setup(t);
+  const root = createRepo();
+  const file = path.join(root, 'auth.ts');
+  fs.writeFileSync(file, 'export const a = 2;\nexport const b = 3;\n');
+  const { record } = session({ status: 'busy', cwd: root });
+  transcript(record, [edit(file)]);
+  await start();
+
+  const [node] = await view().provider.getChildren();
+  assert.equal(node.item.description.split(' · ')[0], 'Working');
+  const children = await view().provider.getChildren(node);
+  assert.equal(children[0].item.label, 'Editing auth.ts');
+  const filesNode = children.find((c) => c.kind === 'files');
+  assert.equal(filesNode.item.description, '1');
+  const [fileNode] = await view().provider.getChildren(filesNode);
+  assert.equal(fileNode.item.description, '+2 −1');
+
+  await state.handlers['agentStatus.openFileDiff'](fileNode);
+  const diff = state.executed.find((e) => e.id === 'vscode.diff');
+  assert.equal(diff.args[1].fsPath, file);
+  const head = await state.contentProviders['agent-status-head'].provideTextDocumentContent(diff.args[0]);
+  assert.equal(head, 'export const a = 1;\n');
+});
+
+test('the panel shows nothing when no sessions run, leaving room for its welcome message', async (t) => {
+  const { start } = setup(t);
+  await start();
+  assert.deepEqual(await view().provider.getChildren(), []);
+  assert.equal(view().badge, undefined);
 });

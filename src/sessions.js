@@ -1,48 +1,11 @@
 'use strict';
 
-// Claude Code keeps one record per running session in <config>/sessions/<pid>.json.
-// That format is internal to Claude Code, so everything here reads it defensively.
+// Provider-neutral checks on sessions: is the process alive, which VS Code window does it belong to,
+// does it come from this machine. Sessions arrive in the shape described in providers/index.js.
 
 const fs = require('fs');
-const path = require('path');
 
 const HAS_PROC = process.platform === 'linux' && fs.existsSync('/proc/self/stat');
-
-async function readSessionRecords(dir) {
-  let names;
-  try {
-    names = await fs.promises.readdir(dir);
-  } catch {
-    return []; // No sessions directory yet.
-  }
-  const records = await Promise.all(
-    names
-      .filter((name) => name.endsWith('.json'))
-      .map(async (name) => {
-        try {
-          const record = JSON.parse(await fs.promises.readFile(path.join(dir, name), 'utf8'));
-          return isValidRecord(record) ? record : undefined;
-        } catch {
-          return undefined; // Caught mid-write, or removed meanwhile; the next refresh reads it.
-        }
-      }),
-  );
-  return records.filter(Boolean);
-}
-
-function isValidRecord(record) {
-  return (
-    !!record &&
-    typeof record === 'object' &&
-    Number.isInteger(record.pid) &&
-    record.pid > 1 &&
-    typeof record.sessionId === 'string' &&
-    record.sessionId.length > 0 &&
-    typeof record.cwd === 'string' &&
-    // "spare" records are pre-warmed processes that no one has claimed yet.
-    !record.spare
-  );
-}
 
 function readProcStat(pid) {
   try {
@@ -55,14 +18,14 @@ function readProcStat(pid) {
   }
 }
 
-function isAlive(record) {
+function isAlive(session) {
   if (HAS_PROC) {
-    const stat = readProcStat(record.pid);
+    const stat = readProcStat(session.pid);
     // procStart is the process start time, which tells a reused PID apart.
-    return !!stat && (record.procStart === undefined || String(record.procStart) === stat.startTime);
+    return !!stat && (session.procStart === undefined || String(session.procStart) === stat.startTime);
   }
   try {
-    process.kill(record.pid, 0);
+    process.kill(session.pid, 0);
     return true;
   } catch (err) {
     return err.code === 'EPERM';
@@ -81,14 +44,15 @@ function ancestors(pid) {
   return chain;
 }
 
-// Which window a session belongs to: chats opened by the Claude Code extension are child processes
-// of that window's extension host (hostPid); CLI sessions descend from one of its terminal shells.
-function ownership(record, { shellPids, hostPid, inWorkspace }) {
+// Which window a session belongs to: chats opened by an agent's VS Code extension are child
+// processes of that window's extension host (hostPid); CLI sessions descend from one of its
+// terminal shells.
+function ownership(session, { shellPids, hostPid, inWorkspace }) {
   if (!HAS_PROC) {
     // Without /proc there is no process tree to inspect; sessions in the workspace count as ours.
     return { owned: inWorkspace };
   }
-  const lineage = [record.pid, ...ancestors(record.pid)];
+  const lineage = [session.pid, ...ancestors(session.pid)];
   const terminalPid = lineage.find((pid) => shellPids.has(pid));
   if (terminalPid !== undefined) return { owned: true, terminalPid };
   return { owned: lineage.includes(hostPid) };
@@ -106,35 +70,25 @@ function localPidDomain() {
   }
 }
 
-// Records from another machine or PID namespace (a dev container sharing ~/.claude, say) carry PIDs
-// that mean nothing here. The format is Claude Code's, so it is only trusted once a record matches it.
-function filterByDomain(records, domain) {
-  if (!domain || !records.some((r) => r.pidDomain === domain)) return records;
-  return records.filter((r) => r.pidDomain === undefined || r.pidDomain === domain);
+// Sessions from another machine or PID namespace (a dev container sharing the agent's config, say)
+// carry PIDs that mean nothing here. The format is only trusted once a session matches it.
+function filterByDomain(sessions, domain) {
+  if (!domain || !sessions.some((s) => s.pidDomain === domain)) return sessions;
+  return sessions.filter((s) => s.pidDomain === undefined || s.pidDomain === domain);
 }
 
-// Two live processes on the same session show as one dot: this window's first, then the freshest.
+// Two live processes on the same session show as one: this window's first, then the freshest.
 function dedupeSessions(sessions) {
   const best = new Map();
   for (const s of sessions) {
-    const current = best.get(s.id);
+    const current = best.get(s.key);
     const better =
       !current ||
       (s.owned && !current.owned) ||
       (s.owned === current.owned && (s.updatedAt || 0) > (current.updatedAt || 0));
-    if (better) best.set(s.id, s);
+    if (better) best.set(s.key, s);
   }
   return [...best.values()];
 }
 
-module.exports = {
-  HAS_PROC,
-  readSessionRecords,
-  isValidRecord,
-  isAlive,
-  ancestors,
-  ownership,
-  localPidDomain,
-  filterByDomain,
-  dedupeSessions,
-};
+module.exports = { HAS_PROC, isAlive, ancestors, ownership, localPidDomain, filterByDomain, dedupeSessions };

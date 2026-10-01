@@ -43,24 +43,58 @@ const ICONS = {
   'git-branch': 60527,
   error: 60039,
   warning: 60012,
+  'chevron-down': 60084,
+  'chevron-right': 60086,
+  edit: 60019,
+  folder: 60035,
+  files: 60144,
+  'link-external': 60180,
+  refresh: 60215,
+  'list-flat': 60292,
+  'circle-filled': 60017,
+  'layout-sidebar-left': 60403,
+  terminal: 60037,
+  search: 60013,
+  'source-control': 60008,
+  extensions: 60134,
+  'collapse-all': 60101,
 };
+// The panel's status icons use these theme colors (charts.yellow, charts.red, charts.green).
+const PANEL_COLORS = { busy: '#cca700', waiting: '#f14c4c', idle: '#89d185' };
 
 const COLORS = { waiting: '#F44336', busy: '#FBC02D', idle: '#CCCCCC', empty: 'rgba(204, 204, 204, 0.5)' };
 const DOT = { busy: '🟡', waiting: '🔴', idle: '🟢' };
 
 const SESSIONS = [
-  { title: 'fix/login-redirect', status: 'busy', label: 'Working', since: '3 min', folder: 'web-app' },
+  {
+    title: 'fix/login-redirect',
+    status: 'busy',
+    label: 'Working',
+    since: '3 min',
+    folder: 'web-app',
+    branch: 'main',
+    action: { icon: 'edit', text: 'Editing auth.ts' },
+  },
   {
     title: 'Refactor the recording service',
     status: 'waiting',
     label: 'Waiting',
     since: '1 min',
     folder: 'web-app/api',
+    branch: 'main',
     waitingFor: 'Permission to run Bash(npm test)',
   },
-  { title: 'End-to-end tests for rooms', status: 'idle', label: 'Idle', since: '12 min', folder: 'web-app' },
-  { title: 'docs/update-readme', status: 'busy', label: 'Working', since: '<1 min', folder: 'web-app' },
-  { title: 'Migrate to Node 22', status: 'idle', label: 'Idle', since: '1 h', folder: 'web-app/api' },
+  { title: 'End-to-end tests for rooms', status: 'idle', label: 'Idle', since: '12 min', folder: 'web-app (worktree rooms-e2e)', branch: 'test/rooms-e2e' },
+  {
+    title: 'docs/update-readme',
+    status: 'busy',
+    label: 'Working',
+    since: '<1 min',
+    folder: 'web-app',
+    branch: 'main',
+    action: { icon: 'terminal', text: 'Running: Check the README links' },
+  },
+  { title: 'Migrate to Node 22', status: 'idle', label: 'Idle', since: '1 h', folder: 'web-app (worktree node-22)', branch: 'chore/node-22' },
 ];
 
 const CODE = [
@@ -97,7 +131,7 @@ html, body { margin: 0; background: #1f1f1f; color: #cccccc; font-family: "Noto 
 .tab .lang { color: #4d9fe0; font-size: 10px; font-weight: 700; }
 .code { padding-top: 6px; font-family: "Noto Sans Mono", monospace; font-size: 13px; line-height: 19px; }
 .code .line { display: flex; white-space: pre; }
-.code .ln { width: 44px; padding-right: 22px; text-align: right; color: #6e7681; }
+.code .ln { flex-shrink: 0; width: 44px; padding-right: 22px; text-align: right; color: #6e7681; }
 .kw { color: #569cd6; } .kw2 { color: #c586c0; } .str { color: #ce9178; } .type { color: #4ec9b0; }
 .fn { color: #dcdcaa; } .var { color: #9cdcfe; } .const { color: #4fc1ff; }
 .statusbar { position: absolute; left: 0; right: 0; bottom: 0; height: 22px; background: #181818; border-top: 1px solid #2b2b2b; display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
@@ -121,6 +155,24 @@ html, body { margin: 0; background: #1f1f1f; color: #cccccc; font-family: "Noto 
 .qi .desc, .qi .detail { color: #9d9d9d; font-size: 12px; }
 .qi .row.active .desc, .qi .row.active .detail { color: #c8c8c8; }
 .qi .desc { margin-left: 8px; }
+.workbench { display: flex; height: 100%; }
+.activitybar { width: 48px; background: #181818; border-right: 1px solid #2b2b2b; display: flex; flex-direction: column; align-items: center; padding-top: 4px; }
+.activitybar .act { position: relative; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; color: #868686; }
+.activitybar .act .codicon { font-size: 24px; vertical-align: 0; }
+.activitybar .act.active { color: #ffffff; border-left: 2px solid #0078d4; }
+.activitybar .badge { position: absolute; right: 7px; bottom: 7px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: #0078d4; color: #ffffff; font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.sidebar { width: 400px; background: #181818; border-right: 1px solid #2b2b2b; font-size: 13px; }
+.sidebar .header { height: 35px; padding: 0 8px 0 20px; display: flex; align-items: center; justify-content: space-between; font-size: 11px; letter-spacing: 0.04em; color: #cccccc; }
+.sidebar .header .actions { display: flex; gap: 6px; color: #cccccc; }
+.tree .row { height: 22px; display: flex; align-items: center; white-space: pre; color: #cccccc; }
+.tree .row.hovered { background: rgba(255, 255, 255, 0.05); }
+.tree .twistie { width: 16px; display: flex; justify-content: center; color: #c5c5c5; }
+.tree .icon { width: 16px; margin-right: 6px; display: flex; justify-content: center; }
+.tree .ts { color: #4d9fe0; font-size: 9px; font-weight: 700; }
+.tree .desc { margin-left: 8px; color: #9d9d9d; font-size: 12px; }
+.tree .spacer { flex: 1; }
+.tree .inline { margin-right: 10px; color: #cccccc; }
+.editor-rest { flex: 1; overflow: hidden; }
 .states { padding: 20px 24px; display: flex; flex-direction: column; gap: 10px; }
 .state { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
 .state .caption { font-size: 13px; }
@@ -162,31 +214,74 @@ function hoverCard() {
   const counts = { busy: 0, waiting: 0, idle: 0 };
   SESSIONS.forEach((s) => (counts[s.status] += 1));
   const rows = SESSIONS.map((s, i) => {
-    let row = `${DOT[s.status]} <code>${i + 1}</code> ${link(esc(s.title))}<br>${s.label} · ${esc(s.since)} · ${s.folder}`;
+    let row = `${DOT[s.status]} <code>${i + 1}</code> ${link(esc(s.title))}<br>${s.label} · ${esc(s.since)} · ${esc(s.folder)} · ${esc(s.branch)}`;
     if (s.waitingFor) row += `<br><em>${esc(s.waitingFor)}</em>`;
+    if (s.action) row += `<br>${icon(s.action.icon)} ${esc(s.action.text)}`;
     return `<p>${row}</p>`;
   }).join('');
   return `<div class="hover" style="right: 20px; bottom: 26px;">
-  <p><strong>Claude Code</strong> · ${SESSIONS.length} sessions in this window</p>
+  <p><strong>Agents</strong> · ${SESSIONS.length} sessions in this window</p>
   <p>Filter: <strong>All (${SESSIONS.length})</strong> · ${link(`Working (${counts.busy})`)} · ${link(`Waiting (${counts.waiting})`)} · ${link(`Idle (${counts.idle})`)}</p>
   <hr>${rows}<hr>
-  <p>${link(`${icon('list-selection')} Open session picker`)} · or click the chip</p>
+  <p>${link(`${icon('list-selection')} Open session picker`)} · ${link(`${icon('layout-sidebar-left')} Show panel`)}</p>
 </div>`;
 }
 
 function picker() {
   const activeIndex = SESSIONS.findIndex((s) => s.status === 'waiting');
   const rows = SESSIONS.map((s, i) => {
-    const detail = [s.waitingFor, s.folder].filter(Boolean).join(' · ');
+    const detail = [s.waitingFor || (s.action && s.action.text), s.folder, s.branch].filter(Boolean).join(' · ');
     return `<div class="row${i === activeIndex ? ' active' : ''}">
   <div>${DOT[s.status]} ${i + 1}&nbsp;&nbsp;${esc(s.title)}<span class="desc">${s.label} · ${esc(s.since)}</span></div>
   <div class="detail">${esc(detail)}</div>
 </div>`;
   }).join('');
   return `<div class="qi" style="left: 80px; top: 44px;">
-  <div class="title"><div class="actions"></div><div class="text">Claude Code Sessions</div><div class="actions">${icon('filter')}</div></div>
-  <div class="input">Search by title, folder or status</div>
+  <div class="title"><div class="actions"></div><div class="text">Agent Sessions</div><div class="actions">${icon('filter')}</div></div>
+  <div class="input">Search by title, folder, branch or status</div>
   ${rows}
+</div>`;
+}
+
+function treeRow(level, { twistie, iconHtml, label, desc, hovered = false, inline }) {
+  const chevron = twistie ? icon(twistie === 'open' ? 'chevron-down' : 'chevron-right') : '';
+  return `<div class="row${hovered ? ' hovered' : ''}" style="padding-left: ${8 + level * 8}px">
+  <span class="twistie">${chevron}</span><span class="icon">${iconHtml}</span><span>${esc(label)}</span>${desc ? `<span class="desc">${esc(desc)}</span>` : ''}<span class="spacer"></span>${inline ? `<span class="inline">${icon(inline)}</span>` : ''}
+</div>`;
+}
+
+function panel() {
+  const dot = (status) => `<span class="codicon" style="color: ${PANEL_COLORS[status]}">&#${ICONS['circle-filled']};</span>`;
+  const plain = (name) => icon(name);
+  const ts = '<span class="ts">TS</span>';
+  const [login, recording, rooms, readme, node] = SESSIONS;
+  const session = (s, extra = {}) => ({ iconHtml: dot(s.status), label: s.title, desc: `${s.label} · ${s.since}`, ...extra });
+  const rows = [
+    treeRow(0, { twistie: 'open', iconHtml: plain('git-branch'), label: 'main', desc: 'web-app' }),
+    treeRow(1, session(login, { twistie: 'open', hovered: true, inline: 'link-external' })),
+    treeRow(2, { iconHtml: plain(login.action.icon), label: login.action.text }),
+    treeRow(2, { iconHtml: plain('folder'), label: login.folder }),
+    treeRow(2, { twistie: 'open', iconHtml: plain('files'), label: 'Files edited', desc: '3' }),
+    treeRow(3, { iconHtml: ts, label: 'auth.ts', desc: 'src · +12 −3' }),
+    treeRow(3, { iconHtml: ts, label: 'login.page.ts', desc: 'src/pages · +4 −1' }),
+    treeRow(3, { iconHtml: ts, label: 'auth.test.ts', desc: 'test · new · +48' }),
+    treeRow(1, session(recording, { twistie: 'closed' })),
+    treeRow(1, session(readme, { twistie: 'closed' })),
+    treeRow(0, { twistie: 'open', iconHtml: plain('git-branch'), label: rooms.branch, desc: 'web-app · worktree' }),
+    treeRow(1, session(rooms, { twistie: 'closed' })),
+    treeRow(0, { twistie: 'open', iconHtml: plain('git-branch'), label: node.branch, desc: 'web-app · worktree' }),
+    treeRow(1, session(node, { twistie: 'closed' })),
+  ].join('');
+  const activity = ['files', 'search', 'source-control', 'extensions']
+    .map((name) => `<div class="act">${icon(name)}</div>`)
+    .join('');
+  return `<div class="workbench">
+  <div class="activitybar">${activity}<div class="act active">${icon('robot')}<span class="badge">1</span></div></div>
+  <div class="sidebar">
+    <div class="header"><span>AGENT STATUS: SESSIONS</span><span class="actions">${['list-flat', 'filter', 'refresh', 'collapse-all'].map(icon).join('')}</span></div>
+    <div class="tree">${rows}</div>
+  </div>
+  <div class="editor-rest">${editor()}</div>
 </div>`;
 }
 
@@ -203,10 +298,16 @@ const IMAGES = [
   {
     name: 'hover.png',
     width: 820,
-    height: 520,
-    body: `<div class="frame" style="width: 820px; height: 520px;">${editor()}${hoverCard()}${statusBar(
+    height: 560,
+    body: `<div class="frame" style="width: 820px; height: 560px;">${editor()}${hoverCard()}${statusBar(
       chip({ color: COLORS.waiting, dots: sessionDots(), hovered: true }),
     )}</div>`,
+  },
+  {
+    name: 'panel.png',
+    width: 820,
+    height: 400,
+    body: `<div class="frame" style="width: 820px; height: 400px;">${panel()}</div>`,
   },
   {
     name: 'picker.png',

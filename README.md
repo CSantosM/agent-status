@@ -32,13 +32,33 @@ This is a community project, not affiliated with or endorsed by Anthropic.
 
 ## Using it
 
-- **Hover the chip** to see the sessions in the same order as the dots, numbered, each with its title, status, time in that status and folder. Click a title to open that session. The filter links at the top (All · Working · Waiting · Idle) choose which dots the chip shows.
+- **Hover the chip** to see the sessions in the same order as the dots, numbered, each with its title, status, time in that status, folder and branch, and what it is doing right now. Click a title to open that session. The filter links at the top (All · Working · Waiting · Idle) choose which sessions the chip and the panel show.
 - **Click the chip** to open a searchable session picker. The first waiting session is highlighted, so Enter takes you to it. The funnel button in its title bar opens the status filter.
 - A funnel appears in the chip while a filter is active. The filter is remembered across restarts.
 
 <p align="center">
-  <img src="docs/images/picker.png" width="760" alt="The session picker at the top of the window: a search box and the five sessions, each with its dot, number, title, status and time, and the folder below. The waiting session is highlighted.">
+  <img src="docs/images/picker.png" width="760" alt="The session picker at the top of the window: a search box and the five sessions, each with its dot, number, title, status and time, and below it what it is doing, its folder and its branch. The waiting session is highlighted.">
 </p>
+
+### The panel
+
+The robot in the activity bar opens the **Agent Status** panel: every session in one tree, with a badge counting the sessions that wait for you.
+
+<p align="center">
+  <img src="docs/images/panel.png" width="820" alt="The Agent Status panel in the side bar, grouped by branch. Under main, the session fix/login-redirect is expanded: it is editing auth.ts in web-app and has edited three files, each with its folder and lines added and removed. Below it, a waiting and a working session on main, and two idle sessions in their own worktrees. The activity bar icon shows a badge with 1.">
+</p>
+
+- **Expand a session** to see what it is doing, its folder and the files it edited, with the lines added and removed against HEAD (or *new*, *deleted*, *no changes*).
+- **Click a file** to open its changes against HEAD in a diff; the second button on the row opens the file itself. Edits made by the session's subagents count too.
+- **Group by branch** with the branch button in the panel's title bar (or `agentStatus.groupBy`). Sessions that share a working tree land in the same group, which shows at a glance which agents may step on each other; each worktree is a group of its own. Grouping also applies to the chip (groups are separated by ` · `), the hover and the picker.
+
+### What each agent is doing
+
+While a session works, the hover, the picker and the panel show its latest tool call in words, read from the session's transcript: *Editing auth.ts*, *Running: Run the tests*, *Searching for "login"*, *Running a subagent: Explore the API*. Until it calls a tool it shows *Thinking…*; while it waits, what it waits for. Activity updates every few seconds.
+
+### Notifications
+
+When a session in this window stops to wait for your decision, a notification says which one and what it needs, with an **Open** button that takes you to it. **Turn Off** in the notification (or `agentStatus.notifyOnWaiting`) disables them.
 
 _The images are mockups drawn by `docs/render.js` with made-up sessions, using VS Code's icons and Dark Modern colors._
 
@@ -64,11 +84,16 @@ Several sessions changing at the same moment make one sound, and if one finishes
 
 ## How it works
 
-Claude Code writes one record per running session to `~/.claude/sessions/<pid>.json` (or `$CLAUDE_CONFIG_DIR/sessions`) with its `status` (`busy`, `waiting`, `idle`), `cwd` and start time. The extension watches that directory and re-checks every 5 seconds. It only reads the `.json` records, never the `.key` files next to them.
+Each agent is read by a **provider** (see [Adding an agent](#adding-an-agent)). For Claude Code:
 
-- **Liveness:** a record whose process is gone, or whose PID was reused by another process, is ignored.
-- **Titles:** the tab name you gave the session, otherwise the title Claude generated, read from the end of the session transcript in `~/.claude/projects/`.
-- **Which window owns a session (Linux):** chats opened by the Claude Code extension are child processes of the window's extension host; CLI sessions descend from one of the window's terminal shells. The extension walks `/proc` to tell them apart.
+- **Sessions:** Claude Code writes one record per running session to `~/.claude/sessions/<pid>.json` (or `$CLAUDE_CONFIG_DIR/sessions`) with its `status` (`busy`, `waiting`, `idle`), `cwd` and start time. The extension watches that directory and re-checks every 5 seconds. It only reads the `.json` records, never the `.key` files next to them.
+- **Titles, activity and edited files:** read from the session's transcript in `~/.claude/projects/` and its subagents' transcripts. Each refresh reads only what was appended since the last one.
+- **Branches and changes:** the branch comes from the folder's `.git` (worktrees included) without running git; line counts and diffs run `git status`, `git diff` and `git show`, only when the panel asks.
+
+And for every agent:
+
+- **Liveness:** a session whose process is gone, or whose PID was reused by another process, is ignored.
+- **Which window owns a session (Linux):** chats opened by an agent's VS Code extension are child processes of the window's extension host; CLI sessions descend from one of the window's terminal shells. The extension walks `/proc` to tell them apart.
 
 Nothing leaves the machine: no network calls, no telemetry.
 
@@ -90,7 +115,9 @@ Nothing leaves the machine: no network calls, no telemetry.
 | `agentStatus.soundOnWaiting`     | `true`           | Play an alert when a session in this window waits for your decision.                              |
 | `agentStatus.finishSoundFile`    | (empty)          | `.wav` file to play instead of the built-in finish blip.                                           |
 | `agentStatus.waitingSoundFile`   | (empty)          | `.wav` file to play instead of the built-in waiting sound.                                         |
+| `agentStatus.notifyOnWaiting`    | `true`           | Show a notification with an Open button when a session in this window waits for your decision.     |
 | `agentStatus.order`              | `stable`         | `stable`: start order, every dot keeps its place. `status`: waiting first, then working, then idle. |
+| `agentStatus.groupBy`            | `none`           | `branch`: keep sessions in the same branch or worktree together in the chip, hover, picker and panel. |
 | `agentStatus.icon`               | `robot`          | Codicon at the start of the chip, e.g. `sparkle`.                                                  |
 | `agentStatus.iconReflectsStatus` | `true`           | Color the icon with the most urgent status.                                                        |
 | `agentStatus.maxDots`            | `8`              | Dots shown before the rest are grouped as `+N`.                                                    |
@@ -99,9 +126,13 @@ Nothing leaves the machine: no network calls, no telemetry.
 
 Sessions that belong to another window or to a terminal outside VS Code are shown with the `workspace` and `all` scopes, but are not opened from here: attaching a second client to a running session would conflict with it.
 
+## Adding an agent
+
+Everything specific to an agent lives in a provider under `src/providers/`. A provider lists its sessions in a shared shape (process, folder, status, what it waits for), describes each one (title, current action, edited files, branch) and, if the agent has a VS Code extension, opens a session in it. The chip, hover, picker, panel, sounds and notifications work from those fields alone. `src/providers/index.js` documents the interface and registers the providers; `src/providers/claude-code/` is the reference implementation.
+
 ## Limitations
 
-- `~/.claude/sessions/*.json` is an internal Claude Code format, not a documented API. If an update changes it, the chip may stop showing sessions; Claude Code itself is unaffected.
+- Claude Code's session records and transcripts are internal formats, not a documented API. If an update changes them, sessions or their activity may stop showing; Claude Code itself is unaffected.
 - A status bar item takes a single text color and a single click target. That is why the dots are emoji, and why sessions are opened from the hover or the picker rather than by clicking an individual dot.
 - Window ownership needs `/proc` (Linux). Elsewhere, sessions inside the workspace folders count as this window's.
 
@@ -121,9 +152,11 @@ It runs the tests first and refuses to package if any fails. Then run **Develope
 
 | Path            | What it holds                                                                  |
 | --------------- | ------------------------------------------------------------------------------ |
-| `extension.js`  | Everything that talks to VS Code: the chip, hover, picker and opening sessions |
-| `src/sessions.js` | Reading session records, liveness, window ownership, deduplication           |
-| `src/titles.js` | Session titles from the transcripts                                            |
+| `extension.js`  | Everything that talks to VS Code: the chip, hover, picker, notifications and opening sessions and files |
+| `src/panel.js`  | The Agent Status panel                                                          |
+| `src/providers/` | One provider per agent; `claude-code/` reads Claude Code's records and transcripts and opens its chats |
+| `src/sessions.js` | Provider-neutral checks: liveness, window ownership, machine, deduplication  |
+| `src/git.js`    | Branches, worktrees, file changes and HEAD contents                            |
 | `src/sound.js`  | The finish and waiting sounds and their audio player fallbacks                 |
 | `src/util.js`   | Formatting and timeout helpers                                                 |
 | `test/`         | `node:test` suites; `test/helpers.js` stands in for the `vscode` module        |

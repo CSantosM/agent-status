@@ -2,30 +2,14 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('fs');
-const path = require('path');
-const { createClaudeDir, spawnSessionProcess, writeSession } = require('./helpers');
+const { spawnSessionProcess } = require('./helpers');
 const {
-  readSessionRecords,
   isAlive,
   ownership,
   localPidDomain,
   filterByDomain,
   dedupeSessions,
 } = require('../src/sessions');
-
-test('readSessionRecords keeps valid records and skips broken ones', async () => {
-  const dir = createClaudeDir();
-  const sessions = path.join(dir, 'sessions');
-  fs.writeFileSync(path.join(sessions, '100.json'), JSON.stringify({ pid: 100, sessionId: 'a', cwd: '/x' }));
-  fs.writeFileSync(path.join(sessions, '101.json'), '{"pid":101,"sessionId":"b"'); // mid-write
-  fs.writeFileSync(path.join(sessions, '102.json'), JSON.stringify({ pid: 102, sessionId: 'c', cwd: '/x', spare: true }));
-  fs.writeFileSync(path.join(sessions, '103.json'), JSON.stringify({ pid: '103', sessionId: 'd', cwd: '/x' }));
-  fs.writeFileSync(path.join(sessions, '104.key'), 'secret');
-  const records = await readSessionRecords(sessions);
-  assert.deepEqual(records.map((r) => r.sessionId), ['a']);
-  assert.deepEqual(await readSessionRecords(path.join(dir, 'missing')), []);
-});
 
 test('isAlive tells live, dead and reused PIDs apart', () => {
   const proc = spawnSessionProcess();
@@ -67,26 +51,13 @@ test('filterByDomain drops other machines only once the format is confirmed', ()
 
 test('dedupeSessions prefers this window, then the freshest record', () => {
   const sessions = dedupeSessions([
-    { id: 'x', owned: false, updatedAt: 3 },
-    { id: 'x', owned: true, updatedAt: 1 },
-    { id: 'y', owned: true, updatedAt: 1 },
-    { id: 'y', owned: true, updatedAt: 2 },
+    { key: 'x', owned: false, updatedAt: 3 },
+    { key: 'x', owned: true, updatedAt: 1 },
+    { key: 'y', owned: true, updatedAt: 1 },
+    { key: 'y', owned: true, updatedAt: 2 },
   ]);
   assert.deepEqual(sessions, [
-    { id: 'x', owned: true, updatedAt: 1 },
-    { id: 'y', owned: true, updatedAt: 2 },
+    { key: 'x', owned: true, updatedAt: 1 },
+    { key: 'y', owned: true, updatedAt: 2 },
   ]);
-});
-
-test('writeSession helper produces records the reader accepts', async () => {
-  const dir = createClaudeDir();
-  const proc = spawnSessionProcess();
-  try {
-    const record = writeSession(dir, proc, { status: 'busy' });
-    const [read] = await readSessionRecords(path.join(dir, 'sessions'));
-    assert.equal(read.sessionId, record.sessionId);
-    assert.equal(isAlive(read), true);
-  } finally {
-    proc.kill();
-  }
 });

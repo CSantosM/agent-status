@@ -1,0 +1,68 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const childProcess = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { createGit, findRepo } = require('../src/git');
+
+function git(cwd, ...args) {
+  childProcess.execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', ...args], { cwd, stdio: 'ignore' });
+}
+
+function createRepo() {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-status-git-')));
+  git(root, 'init', '-q', '-b', 'main');
+  fs.writeFileSync(path.join(root, 'a.txt'), 'one\ntwo\n');
+  fs.writeFileSync(path.join(root, 'b.txt'), 'keep\n');
+  fs.mkdirSync(path.join(root, 'src'));
+  git(root, 'add', '.');
+  git(root, 'commit', '-q', '-m', 'init');
+  return root;
+}
+
+test('findRepo reads the branch, also from a subfolder and a worktree', async () => {
+  const root = createRepo();
+  assert.deepEqual(await findRepo(path.join(root, 'src')), {
+    root,
+    name: path.basename(root),
+    branch: 'main',
+    label: 'main',
+    worktree: false,
+  });
+
+  const tree = path.join(root, '.claude', 'worktrees', 'feature');
+  git(root, 'worktree', 'add', '-q', '-b', 'feat/x', tree);
+  const info = await findRepo(tree);
+  assert.equal(info.root, tree);
+  assert.equal(info.branch, 'feat/x');
+  assert.equal(info.worktree, true);
+  assert.equal(info.name, path.basename(root), 'named after the main repository');
+
+  git(root, 'checkout', '-q', '--detach');
+  assert.match((await findRepo(root)).label, /^detached at [0-9a-f]{7}$/);
+  assert.equal(await findRepo(os.tmpdir()), undefined);
+});
+
+test('fileChanges reports status and line counts against HEAD', async () => {
+  const root = createRepo();
+  fs.writeFileSync(path.join(root, 'a.txt'), 'one\nTWO\nthree\n');
+  fs.writeFileSync(path.join(root, 'src', 'new.txt'), 'hello\n');
+  fs.rmSync(path.join(root, 'b.txt'));
+  const files = ['a.txt', 'src/new.txt', 'b.txt'].map((f) => path.join(root, f));
+  const changes = await createGit().fileChanges(root, [...files, '/outside/x.txt']);
+  assert.deepEqual(changes.get(files[0]), { status: 'modified', added: 2, removed: 1 });
+  assert.equal(changes.get(files[1]).status, 'untracked');
+  assert.equal(changes.get(files[2]).status, 'deleted');
+  assert.equal(changes.has('/outside/x.txt'), false);
+});
+
+test('headContent returns the committed version, or nothing for new files', async () => {
+  const root = createRepo();
+  fs.writeFileSync(path.join(root, 'a.txt'), 'changed\n');
+  const g = createGit();
+  assert.equal(await g.headContent(root, path.join(root, 'a.txt')), 'one\ntwo\n');
+  assert.equal(await g.headContent(root, path.join(root, 'src', 'missing.txt')), '');
+});
