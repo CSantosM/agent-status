@@ -120,6 +120,12 @@ const esc = (text) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').
 const icon = (name) => `<span class="codicon">&#${ICONS[name]};</span>`;
 // The extension's own robot, from media/agent-status.woff (scripts/make-icons.py).
 const robot = () => '<span class="codicon robot">&#xE000;</span>';
+// The activity bar icon, robot and dots, painted in the activity bar's color like VS Code does.
+const activityIcon = () =>
+  fs
+    .readFileSync(path.join(__dirname, '..', 'media', 'activity.svg'), 'utf8')
+    .replace(/fill="#[0-9A-Fa-f]{6}"/, 'fill="currentColor"')
+    .trim();
 
 function css() {
   const font = fs.readFileSync(CODICON_TTF).toString('base64');
@@ -187,8 +193,9 @@ html, body { margin: 0; background: #1f1f1f; color: #cccccc; font-family: "Noto 
 `;
 }
 
-function chip({ color, working = 0, dots = '', more = '', filter = false, hovered = false }) {
+function chip({ color, label: text = '', working = 0, dots = '', more = '', filter = false, hovered = false }) {
   let label = robot();
+  if (text) label += ` ${text}`;
   if (working) label += ` ${working}`;
   if (dots) label += ` ${dots}`;
   if (more) label += ` ${more}`;
@@ -283,7 +290,7 @@ function panel() {
     .map((name) => `<div class="act">${icon(name)}</div>`)
     .join('');
   return `<div class="workbench">
-  <div class="activitybar">${activity}<div class="act active">${robot()}<span class="badge">2</span></div></div>
+  <div class="activitybar">${activity}<div class="act active">${activityIcon()}<span class="badge">2</span></div></div>
   <div class="sidebar">
     <div class="header"><span>AGENT STATUS: SESSIONS</span><span class="actions">${['list-flat', 'filter', 'refresh', 'collapse-all'].map(icon).join('')}</span></div>
     <div class="tree">${rows}</div>
@@ -293,7 +300,7 @@ function panel() {
 }
 
 const STATES = [
-  { caption: 'No sessions', note: 'Only the robot', chip: { color: COLORS.idle } },
+  { caption: 'No sessions', note: 'In the language VS Code uses', chip: { color: COLORS.idle, label: 'No agents' } },
   { caption: 'All idle', note: 'Every session finished', chip: { color: COLORS.idle, dots: '🟢🟢🟢' } },
   { caption: 'Some working', note: 'Plus how many are working', chip: { color: COLORS.busy, working: 2, dots: '🟢🟡🟢🟡' } },
   { caption: 'Someone needs you', note: 'The robot turns red', chip: { color: COLORS.waiting, working: 2, dots: sessionDots() } },

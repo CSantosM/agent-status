@@ -30,6 +30,7 @@ function setup(t, { preferred = 'panel', context = createContext() } = {}) {
     views: [],
     contentProviders: {},
     respond: undefined,
+    l10n: {},
     messages: [],
     executed: [],
     updates: [],
@@ -103,7 +104,7 @@ test('only shows sessions of this window by default', async (t) => {
   const { session, start } = setup(t);
   session({ status: 'busy' }, spawnForeignProcess);
   await start();
-  assert.equal(chip().text, '$(agent-status-robot)');
+  assert.equal(chip().text, '$(agent-status-robot) No agents');
   assert.equal(chip().color, undefined, 'still visible, in the status bar color');
   assert.equal(chip().visible, true);
 });
@@ -331,4 +332,19 @@ test('the panel shows nothing when no sessions run, leaving room for its welcome
   await start();
   assert.deepEqual(await view().provider.getChildren(), []);
   assert.equal(view().badge, undefined);
+});
+
+test('says "No agents" in the language VS Code uses', async (t) => {
+  const { start } = setup(t);
+  state.l10n = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'l10n', 'bundle.l10n.es.json'), 'utf8'));
+  await start();
+  assert.equal(chip().text, '$(agent-status-robot) Sin agentes');
+});
+
+test('every localized string has a Spanish translation', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'extension.js'), 'utf8');
+  const keys = [...source.matchAll(/l10n\.t\('([^']+)'/g)].map((m) => m[1]);
+  const spanish = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'l10n', 'bundle.l10n.es.json'), 'utf8'));
+  assert.ok(keys.length > 0);
+  assert.deepEqual(keys.filter((key) => !spanish[key]), []);
 });

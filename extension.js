@@ -379,6 +379,7 @@ class AgentStatus {
     // Like the Source Control count of changes: how many agents are working right now.
     const working = countFor(all, 'busy');
     let text = `$(${cfg.icon})`;
+    if (!all.length) text += ` ${vscode.l10n.t('No agents')}`;
     if (working) text += ` ${working}`;
     if (dots) text += ` ${dots}`;
     if (visible.length > shown.length) text += ` +${visible.length - shown.length}`;

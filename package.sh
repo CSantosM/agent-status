@@ -22,7 +22,7 @@ build=$(mktemp -d)
 trap 'rm -rf "$build"' EXIT
 
 mkdir -p "$build/extension"
-cp -r package.json extension.js README.md src media "$build/extension/"
+cp -r package.json extension.js README.md src media l10n "$build/extension/"
 # The README's images are not packaged; point them at the repository so the Extensions view shows them.
 sed -i -E 's#src="(docs/images|media)/#src="https://raw.githubusercontent.com/CSantosM/agent-status/main/\1/#g' "$build/extension/README.md"
 

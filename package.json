@@ -3,7 +3,7 @@
   "displayName": "Agent Status",
   "description": "A status bar chip with one dot per running coding agent session (Claude Code for now): working, waiting or idle.",
   "icon": "media/icon.png",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -26,6 +26,7 @@
     "workspace"
   ],
   "main": "./extension.js",
+  "l10n": "./l10n",
   "scripts": {
     "test": "node --test test/*.test.js",
     "package": "./package.sh",
@@ -317,7 +318,7 @@
     "viewsWelcome": [
       {
         "view": "agentStatus.sessions",
-        "contents": "No agent sessions are running in this window.\n\nStart one in Claude Code, or show sessions from other windows with the [Scope setting](command:workbench.action.openSettings?%5B%22agentStatus.scope%22%5D).\n\n[Supported agents](https://github.com/CSantosM/agent-status#supported-agents)"
+        "contents": "No agent sessions are running in this window.\n\nStart one in Claude Code, or show sessions from other windows with the [Scope setting](command:workbench.action.openSettings?%5B%22agentStatus.scope%22%5D)."
       }
     ],
     "icons": {

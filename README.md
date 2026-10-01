@@ -14,10 +14,10 @@ A status bar chip that shows every running coding agent session at a glance: the
 | 🔴  | Waiting | It needs your permission or an answer |
 | 🟢  | Idle    | It finished and is ready for more     |
 
-The number after the robot counts the agents working right now, like the Source Control count of changes; the panel's badge in the activity bar shows the same number. The robot takes the color of the most urgent status: red if any session is waiting, yellow if any is working. With no sessions, the robot stays on its own.
+The number after the robot counts the agents working right now, like the Source Control count of changes; the panel's badge in the activity bar shows the same number. The robot takes the color of the most urgent status: red if any session is waiting, yellow if any is working. With no sessions, the chip says *No agents*, in the language VS Code uses (English and Spanish so far).
 
 <p align="center">
-  <img src="docs/images/states.png" width="560" alt="Six states of the chip: no sessions shows only the robot; all idle shows green dots after a gray robot; some working turns the robot yellow and adds the number of agents working; someone waiting turns it red; a filter to Waiting shows one red dot and a funnel; more than eight sessions shows eight dots and +3.">
+  <img src="docs/images/states.png" width="560" alt="Six states of the chip: no sessions shows the robot and "No agents"; all idle shows green dots after a gray robot; some working turns the robot yellow and adds the number of agents working; someone waiting turns it red; a filter to Waiting shows one red dot and a funnel; more than eight sessions shows eight dots and +3.">
 </p>
 
 ## Supported agents
@@ -47,7 +47,7 @@ This is a community project, not affiliated with or endorsed by Anthropic.
 The robot in the activity bar opens the **Agent Status** panel: every session in one tree, with a badge counting the agents working.
 
 <p align="center">
-  <img src="docs/images/panel.png" width="820" alt="The Agent Status panel in the side bar, grouped by branch. Under main, the session fix/login-redirect is expanded: it is editing auth.ts in web-app and has edited three files, each with its folder and lines added and removed. Below it, a waiting and a working session on main, and two idle sessions in their own worktrees. The activity bar robot shows a badge with 2, the agents working.">
+  <img src="docs/images/panel.png" width="820" alt="The Agent Status panel in the side bar, grouped by branch. Under main, the session fix/login-redirect is expanded: it is editing auth.ts in web-app and has edited three files, each with its folder and lines added and removed. Below it, a waiting and a working session on main, and two idle sessions in their own worktrees. The activity bar icon, the robot with three dots under its head, shows a badge with 2, the agents working.">
 </p>
 
 - **Expand a session** to see what it is doing, its folder and the files it edited, with the lines added and removed against HEAD (or *new*, *deleted*, *no changes*).
@@ -163,7 +163,8 @@ It runs the tests first and refuses to package if any fails. Then run **Develope
 | `src/util.js`   | Formatting and timeout helpers                                                 |
 | `test/`         | `node:test` suites; `test/helpers.js` stands in for the `vscode` module        |
 | `docs/render.js` | Draws the README images in `docs/images` with headless Chrome (`node docs/render.js`) |
-| `scripts/make-icons.py` | Draws the robot once and writes the status bar font glyph, the activity bar icon and the extension icon (`python3 scripts/make-icons.py`; needs fontTools and Chrome) |
+| `scripts/make-icons.py` | Draws the robot once and writes the status bar font glyph, the activity bar icon and the extension icon, the last two with the three status dots (`python3 scripts/make-icons.py`; needs fontTools and Chrome) |
+| `l10n/`         | Translations of the extension's own texts (`bundle.l10n.<language>.json`)      |
 | `scripts/make-sounds.js` | Synthesizes the finish blip                                                    |
 
 Run the tests with `npm test` (or `node --test 'test/*.test.js'`). The extension tests start real `sleep` processes to stand in for Claude sessions, so they need Linux.

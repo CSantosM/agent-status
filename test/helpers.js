@@ -18,6 +18,7 @@ function createVscode() {
     items: [],
     views: [],
     contentProviders: {},
+    l10n: {},
     messages: [],
     executed: [],
     updates: [],
@@ -91,6 +92,10 @@ function createVscode() {
       }
     },
     QuickInputButtons: { Back: { id: 'back' } },
+    // state.l10n plays the role of the loaded l10n bundle (message -> translation).
+    l10n: {
+      t: (message, ...args) => (state.l10n[message] ?? message).replace(/\{(\d+)\}/g, (_, i) => String(args[i])),
+    },
     QuickPickItemKind: { Separator: -1, Default: 0 },
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     TreeItem: class {
