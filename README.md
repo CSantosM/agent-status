@@ -1,6 +1,6 @@
 # Agent Status
 
-A status bar chip that shows every running Claude Code session at a glance: an agent icon followed by one dot per session.
+A status bar chip that shows every running coding agent session at a glance: an agent icon followed by one dot per session. For now it supports [Claude Code](#supported-agents).
 
 <p align="center">
   <img src="docs/images/hover.png" width="820" alt="The chip at the right of the VS Code status bar, next to the notifications bell: a red robot icon followed by five colored dots. Above it, the hover card lists the five sessions in the same order, each with its title, status, time and folder, plus filter links for All, Working, Waiting and Idle.">
@@ -8,7 +8,7 @@ A status bar chip that shows every running Claude Code session at a glance: an a
 
 | Dot | Status  | Meaning                               |
 | --- | ------- | ------------------------------------- |
-| 🟡  | Working | Claude is running a turn              |
+| 🟡  | Working | The agent is running a turn           |
 | 🔴  | Waiting | It needs your permission or an answer |
 | 🟢  | Idle    | It finished and is ready for more     |
 
@@ -18,7 +18,17 @@ The icon takes the color of the most urgent status: red if any session is waitin
   <img src="docs/images/states.png" width="560" alt="Six states of the chip: no sessions shows only a dimmed icon; all idle shows green dots with a gray icon; some working turns the icon yellow; someone waiting turns it red; a filter to Waiting shows one red dot and a funnel; more than eight sessions shows eight dots and +3.">
 </p>
 
-This is a community project, not affiliated with or endorsed by Anthropic. It needs the [Claude Code](https://code.claude.com) extension for VS Code (or the `claude` CLI) and works best on Linux; see [Limitations](#limitations).
+## Supported agents
+
+Agent Status is not tied to a single agent, but for now it supports only Claude Code.
+
+| Agent                                  | Support                         | Needs                                                                       |
+| -------------------------------------- | ------------------------------- | --------------------------------------------------------------------------- |
+| [Claude Code](https://code.claude.com) | Supported (tested with 2.1.285) | The Claude Code extension for VS Code, or the `claude` CLI in a VS Code terminal |
+
+Sessions open in the Claude Code extension's chat; CLI sessions focus their terminal instead. It works best on Linux; see [Limitations](#limitations).
+
+This is a community project, not affiliated with or endorsed by Anthropic.
 
 ## Using it
 

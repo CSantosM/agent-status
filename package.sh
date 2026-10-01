@@ -32,7 +32,7 @@ cat > "$build/extension.vsixmanifest" <<EOF
   <Metadata>
     <Identity Language="en-US" Id="agent-status" Version="${version}" Publisher="local" />
     <DisplayName>Agent Status</DisplayName>
-    <Description xml:space="preserve">A status bar chip with one dot per running Claude Code session: working, waiting or idle.</Description>
+    <Description xml:space="preserve">A status bar chip with one dot per running coding agent session (Claude Code for now): working, waiting or idle.</Description>
     <Categories>Other</Categories>
     <Properties>
       <Property Id="Microsoft.VisualStudio.Code.Engine" Value="^1.90.0" />
