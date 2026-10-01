@@ -278,7 +278,7 @@ function panel() {
     treeRow(2, { twistie: 'open', iconHtml: plain('files'), label: 'Files edited', desc: '3' }),
     treeRow(3, { iconHtml: ts, label: 'auth.ts', desc: 'src · +12 −3' }),
     treeRow(3, { iconHtml: ts, label: 'login.page.ts', desc: 'src/pages · +4 −1' }),
-    treeRow(3, { iconHtml: ts, label: 'auth.test.ts', desc: 'test · new · +48' }),
+    treeRow(3, { iconHtml: ts, label: 'auth.guard.ts', desc: 'src/guards · +6 −2' }),
     treeRow(1, session(recording, { twistie: 'closed' })),
     treeRow(1, session(readme, { twistie: 'closed' })),
     treeRow(0, { twistie: 'open', iconHtml: plain('git-branch'), label: rooms.branch, desc: 'web-app · worktree' }),

@@ -292,6 +292,7 @@ class AgentStatus {
     const inWorkspace = workspaceFolderOf(record.cwd) !== undefined;
     const { owned, terminalPid } = ownership(record, { shellPids: shells, hostPid: process.pid, inWorkspace });
     const [details, repo] = await Promise.all([this.describe(provider, record), this.git.repoInfo(record.cwd)]);
+    const files = await this.relevantFiles(details.files, record.cwd, repo);
     const statusSince = record.statusUpdatedAt || record.updatedAt || record.startedAt || now;
     const action = details.action && typeof details.action.text === 'string' ? details.action : undefined;
     return {
@@ -303,7 +304,7 @@ class AgentStatus {
       cwd: record.cwd,
       title: details.title || path.basename(record.cwd) || record.id.slice(0, 8),
       action: action && { text: action.text, icon: /^[a-z0-9-]+(~spin)?$/.test(action.icon) ? action.icon : 'tools' },
-      files: Array.isArray(details.files) ? details.files : [],
+      files,
       repo,
       branchLabel: repo ? repo.label : details.branch,
       folder: folderLabel(record.cwd),
@@ -322,6 +323,21 @@ class AgentStatus {
       empty: details.resumable === false,
       openable: terminalPid !== undefined || (owned && details.resumable === true && provider.canOpen(record)),
     };
+  }
+
+  // Only the files inside the session's folder that git tracks: an agent's scratch files (in /tmp,
+  // say) and anything outside its project say nothing about its work there.
+  async relevantFiles(files, cwd, repo) {
+    if (!repo || !Array.isArray(files) || !files.length) return [];
+    const inside = files.filter((f) => f && typeof f.path === 'string' && isInside(cwd, f.path));
+    if (!inside.length) return [];
+    try {
+      const tracked = await this.git.trackedFiles(repo.root, inside.map((f) => f.path));
+      return inside.filter((f) => tracked.has(f.path));
+    } catch (err) {
+      this.logChange('tracked', 'warn', `Could not ask git which files it tracks: ${err.message}`);
+      return [];
+    }
   }
 
   visible() {
@@ -723,6 +739,11 @@ function workspaceFolderOf(cwd) {
   return (vscode.workspace.workspaceFolders || []).find(
     (f) => cwd === f.uri.fsPath || cwd.startsWith(f.uri.fsPath + path.sep),
   );
+}
+
+function isInside(dir, file) {
+  const relative = path.relative(dir, file);
+  return !!relative && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
 function folderLabel(cwd) {

@@ -66,3 +66,19 @@ test('headContent returns the committed version, or nothing for new files', asyn
   assert.equal(await g.headContent(root, path.join(root, 'a.txt')), 'one\ntwo\n');
   assert.equal(await g.headContent(root, path.join(root, 'src', 'missing.txt')), '');
 });
+
+test('trackedFiles keeps only the files git tracks, taking names literally', async () => {
+  const root = createRepo();
+  fs.writeFileSync(path.join(root, '.gitignore'), 'dist/\n');
+  fs.mkdirSync(path.join(root, 'dist'));
+  fs.writeFileSync(path.join(root, 'dist', 'out.js'), 'built\n');
+  fs.writeFileSync(path.join(root, 'weird*.txt'), 'star\n');
+  fs.writeFileSync(path.join(root, 'weirdX.txt'), 'not tracked\n');
+  git(root, 'add', '.gitignore', 'weird*.txt');
+  git(root, 'commit', '-q', '-m', 'more');
+  fs.writeFileSync(path.join(root, 'src', 'new.txt'), 'untracked\n');
+
+  const files = ['a.txt', 'weird*.txt', 'weirdX.txt', 'src/new.txt', 'dist/out.js'].map((f) => path.join(root, f));
+  const tracked = await createGit().trackedFiles(root, [...files, '/tmp/scratch.txt']);
+  assert.deepEqual([...tracked].sort(), [path.join(root, 'a.txt'), path.join(root, 'weird*.txt')].sort());
+});

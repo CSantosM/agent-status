@@ -348,3 +348,43 @@ test('every localized string has a Spanish translation', () => {
   assert.ok(keys.length > 0);
   assert.deepEqual(keys.filter((key) => !spanish[key]), []);
 });
+
+test('the panel only lists edited files inside the session folder that git tracks', async (t) => {
+  const { session, transcript, start } = setup(t);
+  const root = createRepo();
+  fs.writeFileSync(path.join(root, '.gitignore'), 'dist/\n');
+  fs.mkdirSync(path.join(root, 'sub'));
+  fs.writeFileSync(path.join(root, 'sub', 'inner.ts'), 'export {};\n');
+  git(root, 'add', '.');
+  git(root, 'commit', '-q', '-m', 'more');
+  fs.writeFileSync(path.join(root, 'sub', 'new.ts'), 'untracked\n');
+  fs.mkdirSync(path.join(root, 'sub', 'dist'));
+  fs.writeFileSync(path.join(root, 'sub', 'dist', 'out.js'), 'ignored\n');
+
+  const { record } = session({ status: 'busy', cwd: path.join(root, 'sub') });
+  transcript(record, [
+    edit(path.join(root, 'auth.ts')), // tracked, but outside the session's folder
+    edit(path.join(root, 'sub', 'inner.ts')), // tracked, inside: the only one to show
+    edit(path.join(root, 'sub', 'new.ts')), // not tracked yet
+    edit(path.join(root, 'sub', 'dist', 'out.js')), // ignored by git
+    edit(path.join(os.tmpdir(), 'claude-scratch', 'notes.md')), // the agent's scratchpad
+  ]);
+  await start();
+
+  const [node] = await view().provider.getChildren();
+  const filesNode = (await view().provider.getChildren(node)).find((c) => c.kind === 'files');
+  assert.equal(filesNode.item.description, '1');
+  const files = await view().provider.getChildren(filesNode);
+  assert.deepEqual(files.map((f) => f.file.path), [path.join(root, 'sub', 'inner.ts')]);
+});
+
+test('a session outside any git repository lists no files', async (t) => {
+  const { session, transcript, start } = setup(t);
+  const { record } = session({ status: 'busy', cwd: os.tmpdir() });
+  transcript(record, [edit(path.join(os.tmpdir(), 'notes.md'))]);
+  await start();
+  const [node] = await view().provider.getChildren();
+  const children = await view().provider.getChildren(node);
+  assert.equal(children.find((c) => c.kind === 'files'), undefined);
+  assert.ok(children.some((c) => c.item.label === 'No files edited yet'));
+});

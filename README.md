@@ -47,10 +47,10 @@ This is a community project, not affiliated with or endorsed by Anthropic.
 The robot in the activity bar opens the **Agent Status** panel: every session in one tree, with a badge counting the agents working.
 
 <p align="center">
-  <img src="docs/images/panel.png" width="820" alt="The Agent Status panel in the side bar, grouped by branch. Under main, the session fix/login-redirect is expanded: it is editing auth.ts in web-app and has edited three files, each with its folder and lines added and removed. Below it, a waiting and a working session on main, and two idle sessions in their own worktrees. The activity bar icon, the robot with three dots under its head, shows a badge with 2, the agents working.">
+  <img src="docs/images/panel.png" width="820" alt="The Agent Status panel in the side bar, grouped by branch. Under main, the session fix/login-redirect is expanded: it is editing auth.ts in web-app and has edited three tracked files, each with its folder and lines added and removed. Below it, a waiting and a working session on main, and two idle sessions in their own worktrees. The activity bar icon, the robot with three dots under its head, shows a badge with 2, the agents working.">
 </p>
 
-- **Expand a session** to see what it is doing, its folder and the files it edited, with the lines added and removed against HEAD (or *new*, *deleted*, *no changes*).
+- **Expand a session** to see what it is doing, its folder and the files it edited, with the lines added and removed against HEAD (or *deleted*, *no changes*). Only files inside the session's folder that git tracks are listed: an agent's scratch files, say in `/tmp`, and anything outside its project are left out, and so is a new file until it is added to git.
 - **Click a file** to open its changes against HEAD in a diff; the second button on the row opens the file itself. Edits made by the session's subagents count too.
 - **Group by branch** with the branch button in the panel's title bar (or `agentStatus.groupBy`). Sessions that share a working tree land in the same group, which shows at a glance which agents may step on each other; each worktree is a group of its own. Grouping also applies to the chip (groups are separated by ` · `), the hover and the picker.
 

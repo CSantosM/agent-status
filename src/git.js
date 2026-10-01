@@ -8,16 +8,24 @@ const fs = require('fs');
 const path = require('path');
 
 const CACHE_MS = 5000;
+const TRACKED_CACHE_MS = 15000;
 const TIMEOUT_MS = 5000;
 const MAX_BUFFER = 32 * 1024 * 1024;
 
-function createGit({ execFile = childProcess.execFile, cacheMs = CACHE_MS, timeoutMs = TIMEOUT_MS } = {}) {
+function createGit({
+  execFile = childProcess.execFile,
+  cacheMs = CACHE_MS,
+  trackedCacheMs = TRACKED_CACHE_MS,
+  timeoutMs = TIMEOUT_MS,
+} = {}) {
   const repos = new Map();
   const changes = new Map();
+  const tracked = new Map();
 
   function run(args) {
     return new Promise((resolve) => {
-      execFile('git', args, { timeout: timeoutMs, maxBuffer: MAX_BUFFER, encoding: 'buffer' }, (err, stdout) => {
+      // Paths are always literal: a "*" or "?" in a file name is not a wildcard.
+      execFile('git', ['--literal-pathspecs', ...args], { timeout: timeoutMs, maxBuffer: MAX_BUFFER, encoding: 'buffer' }, (err, stdout) => {
         // Not a repository, no commits yet, a path outside it: all mean "nothing to report".
         resolve(err ? undefined : stdout);
       });
@@ -33,17 +41,31 @@ function createGit({ execFile = childProcess.execFile, cacheMs = CACHE_MS, timeo
     return value;
   }
 
+  // The files git tracks among the given absolute paths, as a Set. Paths outside root never are.
+  async function trackedFiles(root, files) {
+    const key = `${root}\0${files.join('\0')}`;
+    const cached = tracked.get(key);
+    if (cached && Date.now() - cached.at < trackedCacheMs) return cached.value;
+
+    const relative = relativeTo(root, files);
+    const result = new Set();
+    if (relative.size) {
+      const out = await run(['-C', root, 'ls-files', '-z', '--full-name', '--', ...relative.keys()]);
+      for (const rel of out ? out.toString('utf8').split('\0') : []) {
+        if (relative.has(rel)) result.add(relative.get(rel));
+      }
+    }
+    tracked.set(key, { at: Date.now(), value: result });
+    return result;
+  }
+
   // Map of absolute path -> { status, added, removed } against HEAD, for files inside root.
   async function fileChanges(root, files) {
     const key = `${root}\0${files.join('\0')}`;
     const cached = changes.get(key);
     if (cached && Date.now() - cached.at < cacheMs) return cached.value;
 
-    const relative = new Map();
-    for (const file of files) {
-      const rel = path.relative(root, file);
-      if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) relative.set(rel.split(path.sep).join('/'), file);
-    }
+    const relative = relativeTo(root, files);
     const result = new Map();
     if (relative.size) {
       const paths = [...relative.keys()];
@@ -75,7 +97,17 @@ function createGit({ execFile = childProcess.execFile, cacheMs = CACHE_MS, timeo
     return out ? out.toString('utf8') : '';
   }
 
-  return { repoInfo, fileChanges, headContent };
+  return { repoInfo, trackedFiles, fileChanges, headContent };
+}
+
+// Map of path relative to root (with "/") -> absolute path, for the files inside root.
+function relativeTo(root, files) {
+  const relative = new Map();
+  for (const file of files) {
+    const rel = path.relative(root, file);
+    if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) relative.set(rel.split(path.sep).join('/'), file);
+  }
+  return relative;
 }
 
 async function findRepo(cwd) {
