@@ -21,7 +21,8 @@ const CMD = {
   showSessions: 'agentStatus.showSessions',
   filterByStatus: 'agentStatus.filterByStatus',
   refresh: 'agentStatus.refresh',
-  testSound: 'agentStatus.testSound',
+  playFinishSound: 'agentStatus.playFinishSound',
+  playWaitingSound: 'agentStatus.playWaitingSound',
   showLog: 'agentStatus.showLog',
   open: 'agentStatus.open',
   setFilter: 'agentStatus.setFilter',
@@ -75,7 +76,10 @@ class AgentStatus {
     this.sessionsDir = path.join(configDir, 'sessions');
     this.titles = new TitleCache(path.join(configDir, 'projects'));
     this.sound = new Sound({
-      builtIn: path.join(context.extensionPath, 'media', 'blip.wav'),
+      builtIns: {
+        finish: path.join(context.extensionPath, 'media', 'finish.wav'),
+        waiting: path.join(context.extensionPath, 'media', 'waiting.wav'),
+      },
       warn: (message) => vscode.window.showWarningMessage(message),
       log,
     });
@@ -112,7 +116,12 @@ class AgentStatus {
       vscode.commands.registerCommand(CMD.showSessions, () => this.showSessions()),
       vscode.commands.registerCommand(CMD.filterByStatus, () => this.pickFilter(false)),
       vscode.commands.registerCommand(CMD.refresh, () => this.refresh()),
-      vscode.commands.registerCommand(CMD.testSound, () => this.sound.play(settings().soundFile, { force: true })),
+      vscode.commands.registerCommand(CMD.playFinishSound, () =>
+        this.sound.play('finish', settings().finishSoundFile, { force: true }),
+      ),
+      vscode.commands.registerCommand(CMD.playWaitingSound, () =>
+        this.sound.play('waiting', settings().waitingSoundFile, { force: true }),
+      ),
       vscode.commands.registerCommand(CMD.showLog, () => this.log.show()),
       vscode.commands.registerCommand(CMD.open, (id) => this.open(id)),
       vscode.commands.registerCommand(CMD.setFilter, (key) => this.setFilter(key)),
@@ -201,7 +210,7 @@ class AgentStatus {
         const sessions = await this.load();
         if (this.inFlight !== run) return; // A newer refresh replaced this stuck one.
         this.sessions = sessions;
-        this.announceFinished();
+        this.announceTransitions();
         this.render();
         if (this.picker) this.picker.rebuild();
         this.logChange('refresh', 'error', '');
@@ -258,13 +267,19 @@ class AgentStatus {
     return this.sessions.filter((s) => this.filter === 'all' || s.status === this.filter);
   }
 
-  // A session finished its turn when it goes from working to idle between two refreshes. Only this
-  // window's sessions count, so several open windows do not all blip for the same session.
-  announceFinished() {
+  // Between two refreshes, a working session that turns idle finished its turn, and one that turns
+  // waiting stopped for your decision. Only this window's sessions count, so several open windows do
+  // not all sound for the same session.
+  announceTransitions() {
     const cfg = settings();
-    const finished = this.sessions.some((s) => s.owned && s.status === 'idle' && this.lastStatus.get(s.id) === 'busy');
+    const changedTo = (status) =>
+      this.sessions.some((s) => s.owned && s.status === status && this.lastStatus.get(s.id) === 'busy');
+    const waiting = changedTo('waiting');
+    const finished = changedTo('idle');
     this.lastStatus = new Map(this.sessions.map((s) => [s.id, s.status]));
-    if (finished && cfg.soundOnFinish) this.sound.play(cfg.soundFile);
+    // One sound at a time; a session that needs you outranks one that finished.
+    if (waiting && cfg.soundOnWaiting) this.sound.play('waiting', cfg.waitingSoundFile);
+    else if (finished && cfg.soundOnFinish) this.sound.play('finish', cfg.finishSoundFile);
   }
 
   // --- Status bar chip and hover --------------------------------------------
@@ -594,8 +609,10 @@ function settings() {
       if (typeof custom[key] === 'string' && custom[key].trim()) dots[key] = truncate(custom[key].trim(), 4);
     }
   }
-  let soundFile = typeof c.get('soundFile') === 'string' ? c.get('soundFile').trim() : '';
-  if (soundFile.startsWith('~/')) soundFile = path.join(os.homedir(), soundFile.slice(2));
+  const soundFile = (key) => {
+    const value = typeof c.get(key) === 'string' ? c.get(key).trim() : '';
+    return value.startsWith('~/') ? path.join(os.homedir(), value.slice(2)) : value;
+  };
   return {
     scope: oneOf('scope', ['window', 'workspace', 'all']),
     order: oneOf('order', ['stable', 'status']),
@@ -605,7 +622,9 @@ function settings() {
     maxDots: Number.isInteger(maxDots) ? Math.min(50, Math.max(1, maxDots)) : 8,
     hideWhenEmpty: c.get('hideWhenEmpty') === true,
     soundOnFinish: c.get('soundOnFinish') !== false,
-    soundFile,
+    soundOnWaiting: c.get('soundOnWaiting') !== false,
+    finishSoundFile: soundFile('finishSoundFile'),
+    waitingSoundFile: soundFile('waitingSoundFile'),
     dots,
   };
 }

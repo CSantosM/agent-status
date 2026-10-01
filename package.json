@@ -2,7 +2,7 @@
   "name": "agent-status",
   "displayName": "Agent Status",
   "description": "A status bar chip with one dot per running coding agent session (Claude Code for now): working, waiting or idle.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -51,8 +51,13 @@
         "category": "Agent Status"
       },
       {
-        "command": "agentStatus.testSound",
+        "command": "agentStatus.playFinishSound",
         "title": "Play Finish Sound",
+        "category": "Agent Status"
+      },
+      {
+        "command": "agentStatus.playWaitingSound",
+        "title": "Play Waiting Sound",
         "category": "Agent Status"
       },
       {
@@ -119,10 +124,20 @@
           "default": true,
           "description": "Play a short blip when a session in this window finishes its turn (goes from working to idle)."
         },
-        "agentStatus.soundFile": {
+        "agentStatus.soundOnWaiting": {
+          "type": "boolean",
+          "default": true,
+          "description": "Play a double blip when a session in this window stops to wait for your decision, such as a permission request (goes from working to waiting)."
+        },
+        "agentStatus.finishSoundFile": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Absolute path of a `.wav` file to play instead of the built-in blip. Try it with **Agent Status: Play Finish Sound**."
+          "markdownDescription": "Absolute path of a `.wav` file to play instead of the built-in finish blip. Try it with **Agent Status: Play Finish Sound**."
+        },
+        "agentStatus.waitingSoundFile": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Absolute path of a `.wav` file to play instead of the built-in double blip. Try it with **Agent Status: Play Waiting Sound**."
         },
         "agentStatus.order": {
           "type": "string",

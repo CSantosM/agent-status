@@ -22,8 +22,9 @@ const GAP_MS = 1000;
 const TIMEOUT_MS = 5000;
 
 class Sound {
+  // builtIns maps each kind of sound ("finish", "waiting") to the file played by default.
   constructor({
-    builtIn,
+    builtIns,
     warn = () => {},
     log,
     platform = process.platform,
@@ -32,24 +33,26 @@ class Sound {
     timeoutMs = TIMEOUT_MS,
     gapMs = GAP_MS,
   }) {
-    Object.assign(this, { builtIn, warn, log, spawn, exists, timeoutMs, gapMs });
+    Object.assign(this, { builtIns, warn, log, spawn, exists, timeoutMs, gapMs });
     this.players = PLAYERS[platform] || [];
     this.player = undefined; // The last one that worked goes first next time.
-    this.lastPlayed = 0;
+    this.lastPlayed = new Map();
     this.warned = new Set();
   }
 
+  // file: the user's replacement for this kind's built-in sound, if any.
   // force: asked for by the user, so it plays right away and every problem is reported.
-  play(file, { force = false } = {}) {
+  play(kind, file, { force = false } = {}) {
     const now = Date.now();
-    // Several sessions finishing within a second make a single blip.
-    if (!force && now - this.lastPlayed < this.gapMs) return false;
-    this.lastPlayed = now;
+    // Several sessions changing within a second make one sound. Each kind keeps its own gap, so a
+    // finish blip never silences a session that needs you.
+    if (!force && now - (this.lastPlayed.get(kind) || 0) < this.gapMs) return false;
+    this.lastPlayed.set(kind, now);
 
-    let target = this.builtIn;
+    let target = this.builtIns[kind];
     if (file) {
       if (this.exists(file)) target = file;
-      else this.warnOnce(`missing:${file}`, `Sound file not found: ${file}. Playing the built-in blip instead.`, force);
+      else this.warnOnce(`missing:${file}`, `Sound file not found: ${file}. Playing the built-in sound instead.`, force);
     }
     const ordered = this.player ? [this.player, ...this.players.filter((p) => p !== this.player)] : this.players;
     this.run(target, ordered, force);

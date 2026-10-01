@@ -86,12 +86,45 @@ test('blips once when a session goes from working to idle', async (t) => {
   await refresh();
   assert.equal(state.spawned.length, 1);
   assert.equal(state.spawned[0].command, 'pw-play');
+  assert.equal(path.basename(state.spawned[0].args[0]), 'finish.wav');
 
   for (const status of ['waiting', 'idle']) {
     writeSession(claudeDir, proc, { ...record, status });
     await refresh();
   }
   assert.equal(state.spawned.length, 1, 'waiting -> idle is not a finish');
+});
+
+test('plays the double blip when a session stops to wait for you', async (t) => {
+  const { claudeDir, session, start } = setup(t);
+  const { proc, record } = session({ status: 'busy' });
+  await start();
+  writeSession(claudeDir, proc, { ...record, status: 'waiting', waitingFor: 'Permission to run Bash' });
+  await refresh();
+  assert.deepEqual(state.spawned.map((s) => path.basename(s.args[0])), ['waiting.wav']);
+});
+
+test('when one session finishes and another waits, only the waiting sound plays', async (t) => {
+  const { claudeDir, session, start } = setup(t);
+  const a = session({ status: 'busy' });
+  const b = session({ status: 'busy' });
+  await start();
+  writeSession(claudeDir, a.proc, { ...a.record, status: 'idle' });
+  writeSession(claudeDir, b.proc, { ...b.record, status: 'waiting' });
+  await refresh();
+  assert.deepEqual(state.spawned.map((s) => path.basename(s.args[0])), ['waiting.wav']);
+});
+
+test('each sound can be turned off', async (t) => {
+  const { claudeDir, session, start } = setup(t);
+  Object.assign(state.config.agentStatus, { soundOnWaiting: false, soundOnFinish: false });
+  const { proc, record } = session({ status: 'busy' });
+  await start();
+  for (const status of ['waiting', 'busy', 'idle']) {
+    writeSession(claudeDir, proc, { ...record, status });
+    await refresh();
+  }
+  assert.equal(state.spawned.length, 0);
 });
 
 test('escapes session titles in the trusted hover', async (t) => {
