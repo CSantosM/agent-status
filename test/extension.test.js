@@ -465,3 +465,31 @@ test('the panel measures the files of a session from where its branch left main'
   const before = await state.contentProviders['agent-status-base'].provideTextDocumentContent(diff.args[0]);
   assert.equal(before, 'export const a = 1;\n', 'the left side is the file as it was on main');
 });
+
+test("the panel lists files in worktrees of the workspace's repositories, wherever they are", async (t) => {
+  const { session, transcript, start } = setup(t);
+  const root = createRepo();
+  const tree = path.join(fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-status-wt-'))), 'broadcast');
+  git(root, 'worktree', 'add', '-q', '-b', 'feat/broadcast', tree);
+  fs.writeFileSync(path.join(tree, 'auth.ts'), 'export const a = 2;\nexport const b = 3;\n');
+  git(tree, 'commit', '-q', '-am', 'broadcast');
+  const unrelated = createRepo(); // a repository not open in VS Code, and a worktree of it
+  const unrelatedTree = path.join(fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-status-wt-'))), 'other');
+  git(unrelated, 'worktree', 'add', '-q', '-b', 'feat/other', unrelatedTree);
+  openFolders(root);
+
+  const { record } = session({ status: 'idle', cwd: root });
+  transcript(record, [
+    edit(path.join(tree, 'auth.ts')), // the agent's worktree of the workspace repository, under /tmp
+    edit(path.join(path.dirname(tree), 'scratch.md')), // next to it, but in no repository
+    edit(path.join(unrelatedTree, 'auth.ts')), // a worktree of a repository outside the workspace
+  ]);
+  await start();
+
+  const [node] = await view().provider.getChildren();
+  const filesNode = (await view().provider.getChildren(node)).find((c) => c.kind === 'files');
+  assert.equal(filesNode.item.description, '1 · since main', 'the worktree is measured from where its branch left main');
+  const files = await view().provider.getChildren(filesNode);
+  assert.deepEqual(files.map((f) => f.file.path), [path.join(tree, 'auth.ts')]);
+  assert.equal(files[0].item.description, 'worktree feat/broadcast · +2 −1');
+});

@@ -329,10 +329,10 @@ class AgentStatus {
     };
   }
 
-  // Only the files inside the workspace open in VS Code: an agent's scratch files (in /tmp, say) and
-  // anything outside the workspace say nothing about the work there. Inside a git repository a file
-  // must also be tracked, which leaves out ignored and build files; outside one, every edited file
-  // counts. Each file is checked against the repository it lives in, which need not be the session's,
+  // Only the files inside the workspace open in VS Code, or inside a worktree of one of its
+  // repositories wherever it is (agents often work in worktrees under /tmp): an agent's scratch files
+  // and anything else outside say nothing about the work there. Inside a git repository a file must
+  // also be tracked, which leaves out ignored and build files; outside one, every edited file counts. Each file is checked against the repository it lives in, which need not be the session's,
   // and keeps that root, the commit its changes are measured from (so work already committed still
   // shows; see compareBase in src/git.js) and its workspace folder (to show where it is).
   async relevantFiles(files, startedAt) {
@@ -340,11 +340,22 @@ class AgentStatus {
     try {
       const relevant = [];
       const byRoot = new Map();
+      const workspaceRepos = await this.workspaceRepositories();
       for (const [index, file] of files.entries()) {
-        const folder = file && typeof file.path === 'string' ? workspaceFolderOf(file.path) : undefined;
-        if (!folder) continue;
+        if (!file || typeof file.path !== 'string') continue;
+        const folder = workspaceFolderOf(file.path);
         const repo = await this.git.repoInfo(path.dirname(file.path));
-        const entry = { index, file: { ...file, root: repo && repo.root, folder: folder.uri.fsPath } };
+        const inWorktree = !folder && !!repo && workspaceRepos.has(repo.mainRoot);
+        if (!folder && !inWorktree) continue;
+        const entry = {
+          index,
+          file: {
+            ...file,
+            root: repo && repo.root,
+            folder: folder ? folder.uri.fsPath : repo.root,
+            worktree: inWorktree ? repo.label : undefined, // The worktree's branch, to tell where the file is.
+          },
+        };
         if (!repo) {
           relevant.push(entry);
           continue;
@@ -364,6 +375,12 @@ class AgentStatus {
       this.logChange('tracked', 'warn', `Could not ask git which files it tracks: ${err.message}`);
       return [];
     }
+  }
+
+  // The repositories the workspace folders belong to (their main repository, for a worktree).
+  async workspaceRepositories() {
+    const repos = await Promise.all((vscode.workspace.workspaceFolders || []).map((f) => this.git.repoInfo(f.uri.fsPath)));
+    return new Set(repos.filter(Boolean).map((r) => r.mainRoot));
   }
 
   visible() {

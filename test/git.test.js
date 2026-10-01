@@ -27,6 +27,7 @@ test('findRepo reads the branch, also from a subfolder and a worktree', async ()
   const root = createRepo();
   assert.deepEqual(await findRepo(path.join(root, 'src')), {
     root,
+    mainRoot: root,
     name: path.basename(root),
     branch: 'main',
     label: 'main',
@@ -40,6 +41,7 @@ test('findRepo reads the branch, also from a subfolder and a worktree', async ()
   assert.equal(info.branch, 'feat/x');
   assert.equal(info.worktree, true);
   assert.equal(info.name, path.basename(root), 'named after the main repository');
+  assert.equal(info.mainRoot, root);
 
   git(root, 'checkout', '-q', '--detach');
   assert.match((await findRepo(root)).label, /^detached at [0-9a-f]{7}$/);

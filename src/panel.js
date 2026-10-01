@@ -168,7 +168,13 @@ class SessionsPanel {
       const change = changes.get(f.path);
       const item = new vscode.TreeItem(vscode.Uri.file(f.path), vscode.TreeItemCollapsibleState.None);
       item.id = `${s.key}:file:${f.path}`;
-      item.description = [folderOf(f.path, f.folder || f.root), describeChange(change)].filter(Boolean).join(' · ');
+      item.description = [
+        f.worktree && `worktree ${f.worktree}`,
+        folderOf(f.path, f.folder || f.root),
+        describeChange(change),
+      ]
+        .filter(Boolean)
+        .join(' · ');
       item.tooltip = f.path;
       item.contextValue = 'file';
       item.command = { command: 'agentStatus.openFileDiff', title: 'Open Changes', arguments: [s.key, f.path] };

@@ -3,7 +3,7 @@
   "displayName": "Agent Status",
   "description": "A status bar chip with one dot per running coding agent session (Claude Code for now): working, waiting or idle.",
   "icon": "media/icon.png",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "publisher": "local",
   "private": true,
   "license": "MIT",

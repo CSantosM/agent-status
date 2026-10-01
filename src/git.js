@@ -51,7 +51,8 @@ function createGit({
     return value;
   }
 
-  // { root, name, branch, label, worktree } for the repository holding cwd, or undefined.
+  // { root, mainRoot, name, branch, label, worktree } for the repository holding cwd, or undefined.
+  // For a linked worktree, root is the worktree and mainRoot the repository it belongs to.
   function repoInfo(cwd) {
     return cached(caches.repos, cwd, cacheMs, () => findRepo(cwd).catch(() => undefined));
   }
@@ -192,6 +193,7 @@ async function findRepo(cwd) {
       const branch = ref ? ref[1] : undefined;
       return {
         root: dir,
+        mainRoot,
         name: path.basename(mainRoot),
         branch,
         label: branch || `detached at ${head.slice(0, 7)}`,
