@@ -9,7 +9,9 @@
 //                             startedAt?, statusUpdatedAt?, updatedAt?, surface, raw }
 //                           status is "busy", "waiting" or "idle"; surface is "editor" (a chat in
 //                           the agent's own VS Code extension), "cli" (a terminal) or "other".
-//   describe(session)    -> { title, action?: { text, icon }, files: [{ path, at }], branch? }
+//   describe(session)    -> { title, action?: { text, icon }, files: [{ path, at }], branch?, resumable }
+//                           resumable: the agent can show this session without starting a new one.
+//                           Sessions that are not are never opened, and idle ones are hidden.
 //   prune(liveIds)       forget sessions that ended
 //   canOpen(session), unavailableReason(), open(session)
 //                        how an "editor" session is shown in the agent's own chat

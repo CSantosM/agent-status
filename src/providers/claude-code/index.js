@@ -25,11 +25,14 @@ function createClaudeCodeProvider({ configDir, opener } = {}) {
       return (await readSessionRecords(sessionsDir)).map((record) => normalize(record, ID));
     },
 
-    // { title, action, files, branch } from the session's transcript.
+    // { title, action, files, branch, resumable } from the session's transcript.
     async describe(session) {
       const summary = await transcripts.get(session.raw);
       return {
         title: resolveTitle(session.raw, summary),
+        // A chat without messages has no transcript to restore: asked to open one, Claude Code starts
+        // a new empty chat instead.
+        resumable: summary.messages > 0,
         action: summary.lastTool ? describeTool(summary.lastTool) : undefined,
         files: [...summary.files].reverse().map(([file, at]) => ({ path: file, at })),
         // Transcripts say "HEAD" outside a repository.

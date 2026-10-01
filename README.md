@@ -24,7 +24,7 @@ Agent Status is not tied to a single agent, but for now it supports only Claude 
 
 | Agent                                  | Support                         | Needs                                                                       |
 | -------------------------------------- | ------------------------------- | --------------------------------------------------------------------------- |
-| [Claude Code](https://code.claude.com) | Supported (tested with 2.1.285) | The Claude Code extension for VS Code, or the `claude` CLI in a VS Code terminal |
+| [Claude Code](https://code.claude.com) | Supported (tested with 2.1.286) | The Claude Code extension for VS Code, or the `claude` CLI in a VS Code terminal |
 
 Sessions open in the Claude Code extension's chat; CLI sessions focus their terminal instead. It works best on Linux; see [Limitations](#limitations).
 
@@ -62,12 +62,12 @@ When a session in this window stops to wait for your decision, a notification sa
 
 _The images are mockups drawn by `docs/render.js` with made-up sessions, using VS Code's icons and Dark Modern colors._
 
-Clicking a session shows it in Claude Code:
+Agent Status only takes you to sessions that already exist; it never starts one. Clicking a session shows it in Claude Code:
 
-- If the session already has its own tab, that tab comes to the front.
-- Otherwise the Claude Code sidebar switches to that session, instead of a new editor tab opening.
+- If it is open in a tab, or in Claude Code's sidebar, it is shown there.
+- Otherwise it reopens in a tab from its transcript, with its whole conversation.
 
-Claude Code only lets another extension show a session in its sidebar when its **Preferred Location** (`claudeCode.preferredLocation`) is `sidebar` at the moment of the call. When yours is `panel`, the extension sets it to `sidebar` just for the click and restores your value right after (two quick writes to your user settings), so new chats keep opening where you chose. Set `agentStatus.openIn` to `preferredLocation` to skip that and open sessions wherever your Preferred Location says, like Claude Code's own session list.
+Chats that have no messages yet are hidden (set `agentStatus.showEmptySessions` to see them) and never opened: Claude Code cannot restore an empty chat, and asked to, it starts a new one instead. Your Claude Code settings are never touched.
 
 Sessions running in an integrated terminal focus that terminal instead.
 
@@ -99,7 +99,7 @@ Nothing leaves the machine: no network calls, no telemetry.
 
 ### Reliability
 
-- **Your Preferred Location is always given back.** The borrowed value is restored as soon as Claude Code starts opening the session, or after 3 seconds if it does not answer. A marker in the extension's storage makes the next start restore it if VS Code dies mid-click. Workspace settings (`.vscode/settings.json`) are never edited: if the preference is set there, sessions open where it says. If your user settings cannot be written, the session still opens, just without the sidebar switch.
+- **It never starts a session.** Only sessions with a transcript are handed to Claude Code, in the mode that reveals or restores them rather than the sidebar route, which opens a new empty chat when Claude Code's sidebar is closed. Clicks are handled one at a time.
 - **Nothing blocks VS Code.** Files are read asynchronously; a terminal that never reports its process, a refresh that hangs or an audio player that gets stuck are all cut off after a timeout.
 - **Odd data is skipped, not shown.** Half-written records, invalid fields, records from another machine or PID namespace (a dev container sharing `~/.claude`), dead processes and reused PIDs are ignored. Two processes on the same session show as one dot. Titles are escaped before they reach the hover, which runs trusted command links.
 - **Invalid settings fall back to their defaults.**
@@ -110,7 +110,7 @@ Nothing leaves the machine: no network calls, no telemetry.
 | Setting                                | Default          | Description                                                                                        |
 | -------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------- |
 | `agentStatus.scope`              | `window`         | `window`: sessions started from this window. `workspace`: also others inside this workspace. `all`: every session on the machine. |
-| `agentStatus.openIn`             | `sidebar`        | `sidebar`: show sessions in the Claude Code sidebar. `preferredLocation`: open them where Claude Code's Preferred Location says. |
+| `agentStatus.showEmptySessions` | `false`          | Also show chats that have no messages yet. They are never opened from here.                        |
 | `agentStatus.soundOnFinish`      | `true`           | Play a blip when a session in this window finishes its turn.                                       |
 | `agentStatus.soundOnWaiting`     | `true`           | Play an alert when a session in this window waits for your decision.                              |
 | `agentStatus.finishSoundFile`    | (empty)          | `.wav` file to play instead of the built-in finish blip.                                           |

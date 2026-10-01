@@ -2,7 +2,7 @@
   "name": "agent-status",
   "displayName": "Agent Status",
   "description": "A status bar chip with one dot per running coding agent session (Claude Code for now): working, waiting or idle.",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -195,18 +195,10 @@
           "default": "window",
           "description": "Which sessions the chip shows. Sessions that belong elsewhere are listed but cannot be opened from this window."
         },
-        "agentStatus.openIn": {
-          "type": "string",
-          "enum": [
-            "sidebar",
-            "preferredLocation"
-          ],
-          "enumDescriptions": [
-            "Show the session in the Claude Code sidebar, unless it already has its own tab. Claude Code's Preferred Location is set to 'sidebar' only for the instant of the click and then restored, so new chats keep opening where you chose.",
-            "Open it wherever Claude Code's Preferred Location says, like Claude Code's own session list."
-          ],
-          "default": "sidebar",
-          "description": "Where a session opens when you pick it from the chip."
+        "agentStatus.showEmptySessions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also show chats that have no messages yet. They are never opened from here: Claude Code cannot restore an empty chat and would start a new one instead."
         },
         "agentStatus.soundOnFinish": {
           "type": "boolean",

@@ -43,16 +43,19 @@ function setup(t, { preferred = 'panel', context = createContext() } = {}) {
   process.env.CLAUDE_CONFIG_DIR = claudeDir;
   t.after(() => disposeContext(context));
 
-  const session = (fields, spawn = spawnSessionProcess) => {
-    const proc = spawn();
-    processes.push(proc);
-    return { proc, record: writeSession(claudeDir, proc, fields) };
-  };
   // Transcript entries for a session, where Claude Code would write them.
   const transcript = (record, entries) => {
     const file = path.join(claudeDir, 'projects', record.cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${record.sessionId}.jsonl`);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.appendFileSync(file, entries.map((e) => JSON.stringify(e) + '\n').join(''));
+  };
+  // A live session with a first prompt in its transcript, unless it is an empty chat.
+  const session = (fields, spawn = spawnSessionProcess, { empty = false } = {}) => {
+    const proc = spawn();
+    processes.push(proc);
+    const record = writeSession(claudeDir, proc, fields);
+    if (!empty) transcript(record, [{ type: 'user', message: { content: 'Do the task' } }]);
+    return { proc, record };
   };
   const start = async () => {
     extension.activate(context);
@@ -163,8 +166,8 @@ test('escapes session titles in the trusted hover', async (t) => {
   assert.ok(!hover.includes(' $(bug)'));
 });
 
-test('opens in the Claude Code sidebar and gives the preference back', async (t) => {
-  const { context, session, start } = setup(t);
+test('opens an existing session without starting a chat or touching settings', async (t) => {
+  const { session, start } = setup(t);
   const { record } = session({ status: 'idle' });
   await start();
   await open(record.sessionId);
@@ -173,43 +176,44 @@ test('opens in the Claude Code sidebar and gives the preference back', async (t)
   const call = state.executed[0];
   assert.equal(call.id, 'claude-vscode.editor.open');
   assert.equal(call.args[0], record.sessionId);
-  assert.deepEqual(call.args[5], { programmatic: 'honor-preferred-location' });
-  assert.equal(call.preferredLocation, 'sidebar', 'borrowed during the call');
-  assert.equal(state.config.claudeCode.global.preferredLocation, 'panel', 'restored afterwards');
-  assert.equal(context.globalState.get('pendingPreferredLocationRestore'), undefined);
+  assert.deepEqual(call.args[5], { programmatic: 'pin-to-panel' }, 'never the sidebar route, which can start a new chat');
+  assert.deepEqual(state.updates, [], 'no settings are written');
 });
 
-test('two quick clicks do not leave the preference borrowed', async (t) => {
+test('never asks Claude Code to open a chat without messages', async (t) => {
+  const { session, start } = setup(t);
+  state.config.agentStatus.showEmptySessions = true;
+  const { record } = session({ status: 'idle' }, undefined, { empty: true });
+  await start();
+  await open(record.sessionId);
+  assert.equal(state.executed.length, 0, 'Claude Code would start a new empty chat instead');
+  assert.match(state.messages[0][1], /no messages yet/);
+});
+
+test('hides idle chats without messages, but shows them while they work', async (t) => {
+  const { session, start } = setup(t);
+  session({ status: 'idle' }, undefined, { empty: true });
+  session({ status: 'busy' }, undefined, { empty: true });
+  session({ status: 'idle' });
+  await start();
+  assert.equal(chip().text, '$(robot) 🟡🟢');
+});
+
+test('two quick clicks open one after the other', async (t) => {
   const { session, start } = setup(t);
   const { record } = session({ status: 'idle' });
   await start();
-  state.onExecute = () => delay(20);
+  let running = 0;
+  let overlapped = false;
+  state.onExecute = async () => {
+    running += 1;
+    overlapped = overlapped || running > 1;
+    await delay(20);
+    running -= 1;
+  };
   await Promise.all([open(record.sessionId), open(record.sessionId)]);
-  assert.deepEqual(
-    state.executed.map((e) => e.preferredLocation),
-    ['sidebar', 'sidebar'],
-  );
-  assert.equal(state.config.claudeCode.global.preferredLocation, 'panel');
-});
-
-test('a Claude Code that never answers does not keep the preference borrowed', async (t) => {
-  const { session, start } = setup(t);
-  const { record } = session({ status: 'idle' });
-  await start();
-  state.onExecute = () => new Promise(() => {});
-  const started = Date.now();
-  await open(record.sessionId);
-  assert.ok(Date.now() - started < 5000);
-  assert.equal(state.config.claudeCode.global.preferredLocation, 'panel');
-});
-
-test('an unset preference is removed again, not written as "panel"', async (t) => {
-  const { session, start } = setup(t, { preferred: null });
-  const { record } = session({ status: 'idle' });
-  await start();
-  await open(record.sessionId);
-  assert.equal(state.executed[0].preferredLocation, 'sidebar');
-  assert.ok(!('preferredLocation' in state.config.claudeCode.global));
+  assert.equal(state.executed.length, 2);
+  assert.equal(overlapped, false);
 });
 
 test('restores the preference after a click interrupted by a crash', async (t) => {
@@ -220,30 +224,6 @@ test('restores the preference after a click interrupted by a crash', async (t) =
   await delay(20);
   assert.equal(state.config.claudeCode.global.preferredLocation, 'panel');
   assert.equal(context.globalState.get('pendingPreferredLocationRestore'), undefined);
-});
-
-test('never edits workspace settings', async (t) => {
-  const { session, start } = setup(t);
-  state.config.claudeCode.workspace.preferredLocation = 'panel';
-  const { record } = session({ status: 'idle' });
-  await start();
-  await open(record.sessionId);
-  assert.equal(state.updates.length, 0);
-  assert.equal(state.executed[0].preferredLocation, 'panel');
-});
-
-test('still opens the session when settings cannot be written', async (t) => {
-  const { session, start } = setup(t);
-  const { record } = session({ status: 'idle' });
-  await start();
-  state.failUpdates = true;
-  await open(record.sessionId);
-  assert.equal(state.executed.length, 1);
-  assert.equal(state.executed[0].preferredLocation, 'panel');
-  assert.deepEqual(
-    state.messages.filter(([level]) => level === 'error'),
-    [],
-  );
 });
 
 test('does not open sessions that run in another window', async (t) => {

@@ -10,7 +10,7 @@ const path = require('path');
 const { StringDecoder } = require('string_decoder');
 
 const RECHECK_MS = 2000;
-const LOCATE_RETRY_MS = 15000;
+const LOCATE_RETRY_MS = 3000;
 const FIRST_READ_MAX = 32 * 1024 * 1024; // Read whole transcripts up to this size...
 const TAIL_BYTES = 2 * 1024 * 1024; // ...otherwise start this far from the end.
 const CHUNK_BYTES = 4 * 1024 * 1024;
@@ -166,8 +166,10 @@ function newCursor(file) {
   return { file, offset: 0, remainder: '', decoder: new StringDecoder('utf8'), skipPartial: false };
 }
 
+// messages counts the conversation's prompts and replies: a chat without any has nothing Claude Code
+// could restore.
 function emptySummary() {
-  return { customTitle: undefined, aiTitle: undefined, gitBranch: undefined, lastTool: undefined, files: new Map() };
+  return { customTitle: undefined, aiTitle: undefined, gitBranch: undefined, lastTool: undefined, files: new Map(), messages: 0 };
 }
 
 async function exists(file) {
@@ -190,6 +192,7 @@ function apply(entry, summary, fromSubagent) {
   const sidechain = fromSubagent || entry.isSidechain === true;
 
   if (entry.type === 'assistant' && Array.isArray(content)) {
+    if (!sidechain) summary.messages += 1;
     for (const part of content) {
       if (!part || part.type !== 'tool_use' || typeof part.name !== 'string') continue;
       const input = part.input && typeof part.input === 'object' ? part.input : {};
@@ -200,7 +203,10 @@ function apply(entry, summary, fromSubagent) {
   } else if (entry.type === 'user' && !sidechain && !entry.isMeta) {
     // A prompt, not a tool result, starts a new turn: the previous tool call no longer describes it.
     const isToolResult = Array.isArray(content) && content.some((part) => part && part.type === 'tool_result');
-    if (!isToolResult) summary.lastTool = undefined;
+    if (!isToolResult && content !== undefined) {
+      summary.lastTool = undefined;
+      summary.messages += 1;
+    }
   }
 }
 

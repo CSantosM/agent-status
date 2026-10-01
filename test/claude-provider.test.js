@@ -61,3 +61,21 @@ test('the provider lists and describes sessions from its config directory', asyn
   assert.equal(details.branch, 'feat/login');
   assert.equal(provider.canOpen(session), false, 'no opener, no Claude Code extension');
 });
+
+test('only sessions with messages in their transcript can be restored', async () => {
+  const dir = createClaudeDir();
+  const write = (id, entries) => {
+    fs.writeFileSync(path.join(dir, 'sessions', `${id}.json`), JSON.stringify({ pid: 300, sessionId: id, cwd: '/tmp/q', status: 'idle' }));
+    if (!entries) return;
+    const file = path.join(dir, 'projects', '-tmp-q', `${id}.jsonl`);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, entries.map((e) => JSON.stringify(e) + '\n').join(''));
+  };
+  write('no-transcript');
+  write('titles-only', [{ type: 'ai-title', aiTitle: 'Nothing said yet' }]);
+  write('prompted', [{ type: 'user', message: { content: 'Fix the login' } }]);
+  const provider = createClaudeCodeProvider({ configDir: dir });
+  const resumable = {};
+  for (const session of await provider.listSessions()) resumable[session.id] = (await provider.describe(session)).resumable;
+  assert.deepEqual(resumable, { 'no-transcript': false, 'titles-only': false, prompted: true });
+});

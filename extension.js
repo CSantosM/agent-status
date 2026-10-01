@@ -73,9 +73,8 @@ class AgentStatus {
     this.context = context;
     this.log = log;
     this.logged = new Map();
-    const logChange = (key, level, message) => this.logChange(key, level, message);
 
-    this.claudeOpener = new ClaudeCodeOpener({ vscode, context, log, logChange, openIn: () => settings().openIn });
+    this.claudeOpener = new ClaudeCodeOpener({ vscode, context, log });
     this.providers = createProviders({ claudeCode: { opener: this.claudeOpener } });
     this.git = createGit();
     this.sound = new Sound({
@@ -254,7 +253,10 @@ class AgentStatus {
     const now = Date.now();
     const built = await Promise.all(live.map((s) => this.toSession(s, shells, now)));
     const sessions = dedupeSessions(built).filter(
-      (s) => cfg.scope === 'all' || s.owned || (cfg.scope === 'workspace' && s.inWorkspace),
+      (s) =>
+        (cfg.scope === 'all' || s.owned || (cfg.scope === 'workspace' && s.inWorkspace)) &&
+        // An idle chat without messages is not an agent at work, and cannot be opened.
+        (cfg.showEmptySessions || !(s.empty && s.status === 'idle')),
     );
     return arrange(sessions, cfg);
   }
@@ -315,7 +317,10 @@ class AgentStatus {
       surface: record.surface,
       owned,
       terminal: terminalPid === undefined ? undefined : shells.get(terminalPid),
-      openable: terminalPid !== undefined || (owned && provider.canOpen(record)),
+      // Only a session the agent can restore is ever handed to it; anything else would start a new chat.
+      resumable: details.resumable === true,
+      empty: details.resumable === false,
+      openable: terminalPid !== undefined || (owned && details.resumable === true && provider.canOpen(record)),
     };
   }
 
@@ -445,6 +450,7 @@ class AgentStatus {
     const title = escapeMarkdown(truncate(s.title, MAX_TITLE));
     const meta = [s.statusLabel, formatElapsed(s.since), s.folder];
     if (!grouped && s.branchLabel) meta.push(s.branchLabel);
+    if (s.empty) meta.push('no messages yet');
     if (showProvider) meta.push(s.providerLabel);
     if (whereElse(s)) meta.push(whereElse(s));
     const lines = [
@@ -590,6 +596,14 @@ class AgentStatus {
       vscode.window.showInformationMessage(`"${truncate(s.title, MAX_TITLE)}" is not attached to a chat or a terminal in this window.`);
       return;
     }
+    if (!s.resumable) {
+      vscode.window.showInformationMessage(
+        s.empty
+          ? `"${truncate(s.title, MAX_TITLE)}" has no messages yet, so there is nothing to open.`
+          : `"${truncate(s.title, MAX_TITLE)}" cannot be opened yet; try again in a moment.`,
+      );
+      return;
+    }
     const provider = this.providers.find((p) => p.id === s.providerId);
     if (!provider.canOpen(s)) {
       vscode.window.showWarningMessage(provider.unavailableReason());
@@ -678,7 +692,7 @@ function settings() {
     scope: oneOf('scope', ['window', 'workspace', 'all']),
     order: oneOf('order', ['stable', 'status']),
     groupBy: oneOf('groupBy', ['none', 'branch']),
-    openIn: oneOf('openIn', ['sidebar', 'preferredLocation']),
+    showEmptySessions: c.get('showEmptySessions') === true,
     icon: typeof icon === 'string' && /^[a-z0-9-]+$/.test(icon) ? icon : 'robot',
     iconReflectsStatus: c.get('iconReflectsStatus') !== false,
     maxDots: Number.isInteger(maxDots) ? Math.min(50, Math.max(1, maxDots)) : 8,
