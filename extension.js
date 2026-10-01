@@ -376,17 +376,21 @@ class AgentStatus {
       if (cfg.groupBy === 'branch' && i > 0 && s.group.key !== shown[i - 1].group.key) dots += ' · ';
       dots += cfg.dots[s.status];
     });
+    // Like the Source Control count of changes: how many agents are working right now.
+    const working = countFor(all, 'busy');
     let text = `$(${cfg.icon})`;
+    if (working) text += ` ${working}`;
     if (dots) text += ` ${dots}`;
     if (visible.length > shown.length) text += ` +${visible.length - shown.length}`;
     if (this.filter !== 'all') text += ' $(filter)';
-    const color = !all.length ? 'disabled' : (cfg.iconReflectsStatus && urgentColor(all)) || '';
+    // With no sessions the chip keeps the status bar's own color, so it stays easy to find.
+    const color = (cfg.iconReflectsStatus && urgentColor(all)) || '';
     const tooltip = this.tooltip(all, visible, cfg);
 
     // Only touch what changed: reassigning the tooltip redraws a hover the user may be reading.
     if (text !== this.rendered.text) this.item.text = this.rendered.text = text;
     if (color !== this.rendered.color) {
-      this.item.color = color === 'disabled' ? new vscode.ThemeColor('disabledForeground') : color || undefined;
+      this.item.color = color || undefined;
       this.rendered.color = color;
     }
     if (tooltip !== this.rendered.tooltip) {
@@ -404,8 +408,11 @@ class AgentStatus {
   }
 
   renderView(all) {
-    const waiting = all.filter((s) => s.status === 'waiting').length;
-    this.view.badge = waiting ? { value: waiting, tooltip: `${plural(waiting, 'session')} waiting for you` } : undefined;
+    // The same count as the chip, like the Source Control badge.
+    const working = countFor(all, 'busy');
+    const waiting = countFor(all, 'waiting');
+    const tooltip = [`${plural(working, 'agent')} working`, waiting ? `${waiting} waiting for you` : undefined].filter(Boolean).join(' · ');
+    this.view.badge = working ? { value: working, tooltip } : undefined;
     this.view.description = this.filter === 'all' ? undefined : `${filterLabel(this.filter)} only`;
     this.panel.refresh();
   }
@@ -414,7 +421,8 @@ class AgentStatus {
     const where = SCOPE_TEXT[cfg.scope];
     if (!all.length) return `**Agents** · no sessions running ${where}`;
 
-    let header = `**Agents** · ${plural(all.length, 'session')} ${where}`;
+    const working = countFor(all, 'busy');
+    let header = `**Agents** · ${plural(all.length, 'session')} ${where}${working ? `, ${working} working` : ''}`;
     if (this.filter !== 'all') header += ` · showing ${visible.length}`;
 
     const filters = FILTERS.map((f) => {
@@ -693,7 +701,7 @@ function settings() {
     order: oneOf('order', ['stable', 'status']),
     groupBy: oneOf('groupBy', ['none', 'branch']),
     showEmptySessions: c.get('showEmptySessions') === true,
-    icon: typeof icon === 'string' && /^[a-z0-9-]+$/.test(icon) ? icon : 'robot',
+    icon: typeof icon === 'string' && /^[a-z0-9-]+$/.test(icon) ? icon : 'agent-status-robot',
     iconReflectsStatus: c.get('iconReflectsStatus') !== false,
     maxDots: Number.isInteger(maxDots) ? Math.min(50, Math.max(1, maxDots)) : 8,
     hideWhenEmpty: c.get('hideWhenEmpty') === true,

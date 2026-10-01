@@ -2,7 +2,8 @@
   "name": "agent-status",
   "displayName": "Agent Status",
   "description": "A status bar chip with one dot per running coding agent session (Claude Code for now): working, waiting or idle.",
-  "version": "0.7.0",
+  "icon": "media/icon.png",
+  "version": "0.8.0",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -253,8 +254,8 @@
         },
         "agentStatus.icon": {
           "type": "string",
-          "default": "robot",
-          "markdownDescription": "Codicon shown at the start of the chip, for example `robot` or `sparkle`."
+          "default": "agent-status-robot",
+          "markdownDescription": "Icon at the start of the chip: `agent-status-robot` (the extension's robot, as in the activity bar) or any codicon, such as `robot` or `sparkle`."
         },
         "agentStatus.iconReflectsStatus": {
           "type": "boolean",
@@ -318,7 +319,16 @@
         "view": "agentStatus.sessions",
         "contents": "No agent sessions are running in this window.\n\nStart one in Claude Code, or show sessions from other windows with the [Scope setting](command:workbench.action.openSettings?%5B%22agentStatus.scope%22%5D).\n\n[Supported agents](https://github.com/CSantosM/agent-status#supported-agents)"
       }
-    ]
+    ],
+    "icons": {
+      "agent-status-robot": {
+        "description": "The Agent Status robot",
+        "default": {
+          "fontPath": "media/agent-status.woff",
+          "fontCharacter": "\\E000"
+        }
+      }
+    }
   },
   "keywords": [
     "agents",

@@ -93,17 +93,19 @@ test('shows one dot per live session and skips dead or reused PIDs', async (t) =
     JSON.stringify({ pid: 4194000, sessionId: 'dead', cwd: '/tmp', status: 'waiting' }),
   );
   await start();
-  assert.equal(chip().text, '$(robot) 🟡');
+  assert.equal(chip().text, '$(agent-status-robot) 1 🟡', 'the robot, the number of agents working, a dot per session');
   assert.equal(chip().color, '#FBC02D');
   assert.equal(chip().visible, true);
+  assert.deepEqual(view().badge, { value: 1, tooltip: '1 agent working' }, 'the panel badge shows the same count');
 });
 
 test('only shows sessions of this window by default', async (t) => {
   const { session, start } = setup(t);
   session({ status: 'busy' }, spawnForeignProcess);
   await start();
-  assert.equal(chip().text, '$(robot)');
-  assert.equal(chip().color.id, 'disabledForeground');
+  assert.equal(chip().text, '$(agent-status-robot)');
+  assert.equal(chip().color, undefined, 'still visible, in the status bar color');
+  assert.equal(chip().visible, true);
 });
 
 test('blips once when a session goes from working to idle', async (t) => {
@@ -196,7 +198,7 @@ test('hides idle chats without messages, but shows them while they work', async 
   session({ status: 'busy' }, undefined, { empty: true });
   session({ status: 'idle' });
   await start();
-  assert.equal(chip().text, '$(robot) 🟡🟢');
+  assert.equal(chip().text, '$(agent-status-robot) 1 🟡🟢');
 });
 
 test('two quick clicks open one after the other', async (t) => {
@@ -241,7 +243,7 @@ test('falls back to defaults for invalid settings', async (t) => {
   Object.assign(state.config.agentStatus, { icon: '$(evil) x', maxDots: 'lots', dots: { busy: 42 }, scope: 'nope' });
   session({ status: 'busy' });
   await start();
-  assert.equal(chip().text, '$(robot) 🟡');
+  assert.equal(chip().text, '$(agent-status-robot) 1 🟡');
 });
 
 test('notifies when a session stops to wait for you, and opens it from the notification', async (t) => {
@@ -257,7 +259,7 @@ test('notifies when a session stops to wait for you, and opens it from the notif
   assert.match(message, /needs your decision: Permission to run Bash/);
   assert.deepEqual(buttons, ['Open', 'Turn Off']);
   assert.equal(state.executed[0].id, 'claude-vscode.editor.open');
-  assert.equal(view().badge.value, 1, 'the panel badge counts waiting sessions');
+  assert.equal(view().badge, undefined, 'the badge counts working agents; this one is waiting');
 });
 
 test('"Turn Off" in the notification disables it', async (t) => {
@@ -289,7 +291,7 @@ test('groups sessions by branch and worktree when asked', async (t) => {
   session({ status: 'idle', cwd: root, startedAt: 3 });
   state.config.agentStatus.groupBy = 'branch';
   await start();
-  assert.equal(chip().text, '$(robot) 🟡🟢 · 🟡', 'the two sessions sharing main sit together');
+  assert.equal(chip().text, '$(agent-status-robot) 2 🟡🟢 · 🟡', 'the two sessions sharing main sit together');
   const hover = chip().tooltip.value;
   assert.ok(hover.includes('$(git-branch) **main**'));
   assert.ok(hover.includes(`$(git-branch) **feat/x** · ${escapeMarkdown(`${path.basename(root)} · worktree`)}`));

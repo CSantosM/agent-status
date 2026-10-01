@@ -62,7 +62,7 @@ const ICONS = {
 // The panel's status icons use these theme colors (charts.yellow, charts.red, charts.green).
 const PANEL_COLORS = { busy: '#cca700', waiting: '#f14c4c', idle: '#89d185' };
 
-const COLORS = { waiting: '#F44336', busy: '#FBC02D', idle: '#CCCCCC', empty: 'rgba(204, 204, 204, 0.5)' };
+const COLORS = { waiting: '#F44336', busy: '#FBC02D', idle: '#CCCCCC' };
 const DOT = { busy: '🟡', waiting: '🔴', idle: '🟢' };
 
 const SESSIONS = [
@@ -115,13 +115,19 @@ const CODE = [
   [['}', '']],
 ];
 
+const ROBOT_FONT = path.join(__dirname, '..', 'media', 'agent-status.woff');
 const esc = (text) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const icon = (name) => `<span class="codicon">&#${ICONS[name]};</span>`;
+// The extension's own robot, from media/agent-status.woff (scripts/make-icons.py).
+const robot = () => '<span class="codicon robot">&#xE000;</span>';
 
 function css() {
   const font = fs.readFileSync(CODICON_TTF).toString('base64');
+  const robotFont = fs.readFileSync(ROBOT_FONT).toString('base64');
   return `
 @font-face { font-family: codicon; src: url(data:font/ttf;base64,${font}) format("truetype"); }
+@font-face { font-family: agent-status; src: url(data:font/woff;base64,${robotFont}) format("woff"); }
+.codicon.robot { font-family: agent-status; }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: #1f1f1f; color: #cccccc; font-family: "Noto Sans", "Ubuntu", sans-serif; -webkit-font-smoothing: antialiased; }
 .codicon { font-family: codicon; font-size: 16px; line-height: 1; display: inline-block; vertical-align: -3px; }
@@ -177,12 +183,13 @@ html, body { margin: 0; background: #1f1f1f; color: #cccccc; font-family: "Noto 
 .state { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
 .state .caption { font-size: 13px; }
 .state .caption small { display: block; color: #9d9d9d; font-size: 12px; margin-top: 2px; }
-.state .bar { position: relative; width: 300px; height: 22px; background: #181818; border-top: 1px solid #2b2b2b; display: flex; justify-content: flex-end; align-items: center; font-size: 12px; }
+.state .bar { position: relative; flex-shrink: 0; width: 300px; height: 22px; background: #181818; border-top: 1px solid #2b2b2b; display: flex; justify-content: flex-end; align-items: center; font-size: 12px; }
 `;
 }
 
-function chip({ color, dots = '', more = '', filter = false, hovered = false }) {
-  let label = icon('robot');
+function chip({ color, working = 0, dots = '', more = '', filter = false, hovered = false }) {
+  let label = robot();
+  if (working) label += ` ${working}`;
   if (dots) label += ` ${dots}`;
   if (more) label += ` ${more}`;
   if (filter) label += ` ${icon('filter')}`;
@@ -220,7 +227,7 @@ function hoverCard() {
     return `<p>${row}</p>`;
   }).join('');
   return `<div class="hover" style="right: 20px; bottom: 26px;">
-  <p><strong>Agents</strong> · ${SESSIONS.length} sessions in this window</p>
+  <p><strong>Agents</strong> · ${SESSIONS.length} sessions in this window, 2 working</p>
   <p>Filter: <strong>All (${SESSIONS.length})</strong> · ${link(`Working (${counts.busy})`)} · ${link(`Waiting (${counts.waiting})`)} · ${link(`Idle (${counts.idle})`)}</p>
   <hr>${rows}<hr>
   <p>${link(`${icon('list-selection')} Open session picker`)} · ${link(`${icon('layout-sidebar-left')} Show panel`)}</p>
@@ -276,7 +283,7 @@ function panel() {
     .map((name) => `<div class="act">${icon(name)}</div>`)
     .join('');
   return `<div class="workbench">
-  <div class="activitybar">${activity}<div class="act active">${icon('robot')}<span class="badge">1</span></div></div>
+  <div class="activitybar">${activity}<div class="act active">${robot()}<span class="badge">2</span></div></div>
   <div class="sidebar">
     <div class="header"><span>AGENT STATUS: SESSIONS</span><span class="actions">${['list-flat', 'filter', 'refresh', 'collapse-all'].map(icon).join('')}</span></div>
     <div class="tree">${rows}</div>
@@ -286,12 +293,12 @@ function panel() {
 }
 
 const STATES = [
-  { caption: 'No sessions', note: 'Only the icon, dimmed', chip: { color: COLORS.empty } },
+  { caption: 'No sessions', note: 'Only the robot', chip: { color: COLORS.idle } },
   { caption: 'All idle', note: 'Every session finished', chip: { color: COLORS.idle, dots: '🟢🟢🟢' } },
-  { caption: 'Some working', note: 'The icon turns yellow', chip: { color: COLORS.busy, dots: '🟢🟡🟢🟡' } },
-  { caption: 'Someone needs you', note: 'The icon turns red', chip: { color: COLORS.waiting, dots: sessionDots() } },
-  { caption: 'Filtered to Waiting', note: 'A funnel shows while a filter is on', chip: { color: COLORS.waiting, dots: '🔴', filter: true } },
-  { caption: 'More than 8 sessions', note: 'The rest are grouped as +N', chip: { color: COLORS.busy, dots: '🟢🟡🟢🟡🟢🟢🟡🟢', more: '+3' } },
+  { caption: 'Some working', note: 'Plus how many are working', chip: { color: COLORS.busy, working: 2, dots: '🟢🟡🟢🟡' } },
+  { caption: 'Someone needs you', note: 'The robot turns red', chip: { color: COLORS.waiting, working: 2, dots: sessionDots() } },
+  { caption: 'Filtered to Waiting', note: 'A funnel shows while a filter is on', chip: { color: COLORS.waiting, working: 2, dots: '🔴', filter: true } },
+  { caption: 'More than 8 sessions', note: 'The rest are grouped as +N', chip: { color: COLORS.busy, working: 3, dots: '🟢🟡🟢🟡🟢🟢🟡🟢', more: '+3' } },
 ];
 
 const IMAGES = [
@@ -300,7 +307,7 @@ const IMAGES = [
     width: 820,
     height: 560,
     body: `<div class="frame" style="width: 820px; height: 560px;">${editor()}${hoverCard()}${statusBar(
-      chip({ color: COLORS.waiting, dots: sessionDots(), hovered: true }),
+      chip({ color: COLORS.waiting, working: 2, dots: sessionDots(), hovered: true }),
     )}</div>`,
   },
   {

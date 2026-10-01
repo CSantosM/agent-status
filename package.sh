@@ -24,7 +24,7 @@ trap 'rm -rf "$build"' EXIT
 mkdir -p "$build/extension"
 cp -r package.json extension.js README.md src media "$build/extension/"
 # The README's images are not packaged; point them at the repository so the Extensions view shows them.
-sed -i 's#src="docs/images/#src="https://raw.githubusercontent.com/CSantosM/agent-status/main/docs/images/#g' "$build/extension/README.md"
+sed -i -E 's#src="(docs/images|media)/#src="https://raw.githubusercontent.com/CSantosM/agent-status/main/\1/#g' "$build/extension/README.md"
 
 cat > "$build/extension.vsixmanifest" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
@@ -34,6 +34,7 @@ cat > "$build/extension.vsixmanifest" <<EOF
     <DisplayName>Agent Status</DisplayName>
     <Description xml:space="preserve">A status bar chip with one dot per running coding agent session (Claude Code for now): working, waiting or idle.</Description>
     <Categories>Other</Categories>
+    <Icon>extension/media/icon.png</Icon>
     <Properties>
       <Property Id="Microsoft.VisualStudio.Code.Engine" Value="^1.90.0" />
       <Property Id="Microsoft.VisualStudio.Code.ExtensionDependencies" Value="" />
@@ -48,6 +49,7 @@ cat > "$build/extension.vsixmanifest" <<EOF
   <Assets>
     <Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true" />
     <Asset Type="Microsoft.VisualStudio.Services.Content.Details" Path="extension/README.md" Addressable="true" />
+    <Asset Type="Microsoft.VisualStudio.Services.Icons.Default" Path="extension/media/icon.png" Addressable="true" />
   </Assets>
 </PackageManifest>
 EOF
@@ -60,6 +62,8 @@ cat > "$build/[Content_Types].xml" <<'EOF'
   <Default Extension=".md" ContentType="text/markdown" />
   <Default Extension=".wav" ContentType="audio/wav" />
   <Default Extension=".svg" ContentType="image/svg+xml" />
+  <Default Extension=".png" ContentType="image/png" />
+  <Default Extension=".woff" ContentType="font/woff" />
   <Default Extension=".vsixmanifest" ContentType="text/xml" />
 </Types>
 EOF

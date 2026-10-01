@@ -1,6 +1,8 @@
+<p align="center"><img src="media/icon.png" width="96" alt="The Agent Status icon: a robot head with three status dots under it, yellow, red and green."></p>
+
 # Agent Status
 
-A status bar chip that shows every running coding agent session at a glance: an agent icon followed by one dot per session. For now it supports [Claude Code](#supported-agents).
+A status bar chip that shows every running coding agent session at a glance: the Agent Status robot, the number of agents working, and one dot per session. For now it supports [Claude Code](#supported-agents).
 
 <p align="center">
   <img src="docs/images/hover.png" width="820" alt="The chip at the right of the VS Code status bar, next to the notifications bell: a red robot icon followed by five colored dots. Above it, the hover card lists the five sessions in the same order, each with its title, status, time and folder, plus filter links for All, Working, Waiting and Idle.">
@@ -12,10 +14,10 @@ A status bar chip that shows every running coding agent session at a glance: an 
 | 🔴  | Waiting | It needs your permission or an answer |
 | 🟢  | Idle    | It finished and is ready for more     |
 
-The icon takes the color of the most urgent status: red if any session is waiting, yellow if any is working.
+The number after the robot counts the agents working right now, like the Source Control count of changes; the panel's badge in the activity bar shows the same number. The robot takes the color of the most urgent status: red if any session is waiting, yellow if any is working. With no sessions, the robot stays on its own.
 
 <p align="center">
-  <img src="docs/images/states.png" width="560" alt="Six states of the chip: no sessions shows only a dimmed icon; all idle shows green dots with a gray icon; some working turns the icon yellow; someone waiting turns it red; a filter to Waiting shows one red dot and a funnel; more than eight sessions shows eight dots and +3.">
+  <img src="docs/images/states.png" width="560" alt="Six states of the chip: no sessions shows only the robot; all idle shows green dots after a gray robot; some working turns the robot yellow and adds the number of agents working; someone waiting turns it red; a filter to Waiting shows one red dot and a funnel; more than eight sessions shows eight dots and +3.">
 </p>
 
 ## Supported agents
@@ -42,10 +44,10 @@ This is a community project, not affiliated with or endorsed by Anthropic.
 
 ### The panel
 
-The robot in the activity bar opens the **Agent Status** panel: every session in one tree, with a badge counting the sessions that wait for you.
+The robot in the activity bar opens the **Agent Status** panel: every session in one tree, with a badge counting the agents working.
 
 <p align="center">
-  <img src="docs/images/panel.png" width="820" alt="The Agent Status panel in the side bar, grouped by branch. Under main, the session fix/login-redirect is expanded: it is editing auth.ts in web-app and has edited three files, each with its folder and lines added and removed. Below it, a waiting and a working session on main, and two idle sessions in their own worktrees. The activity bar icon shows a badge with 1.">
+  <img src="docs/images/panel.png" width="820" alt="The Agent Status panel in the side bar, grouped by branch. Under main, the session fix/login-redirect is expanded: it is editing auth.ts in web-app and has edited three files, each with its folder and lines added and removed. Below it, a waiting and a working session on main, and two idle sessions in their own worktrees. The activity bar robot shows a badge with 2, the agents working.">
 </p>
 
 - **Expand a session** to see what it is doing, its folder and the files it edited, with the lines added and removed against HEAD (or *new*, *deleted*, *no changes*).
@@ -118,7 +120,7 @@ Nothing leaves the machine: no network calls, no telemetry.
 | `agentStatus.notifyOnWaiting`    | `true`           | Show a notification with an Open button when a session in this window waits for your decision.     |
 | `agentStatus.order`              | `stable`         | `stable`: start order, every dot keeps its place. `status`: waiting first, then working, then idle. |
 | `agentStatus.groupBy`            | `none`           | `branch`: keep sessions in the same branch or worktree together in the chip, hover, picker and panel. |
-| `agentStatus.icon`               | `robot`          | Codicon at the start of the chip, e.g. `sparkle`.                                                  |
+| `agentStatus.icon`               | `agent-status-robot` | Icon at the start of the chip: the extension's robot, or any codicon such as `robot` or `sparkle`. |
 | `agentStatus.iconReflectsStatus` | `true`           | Color the icon with the most urgent status.                                                        |
 | `agentStatus.maxDots`            | `8`              | Dots shown before the rest are grouped as `+N`.                                                    |
 | `agentStatus.hideWhenEmpty`      | `false`          | Hide the chip when no sessions are running.                                                        |
@@ -161,6 +163,8 @@ It runs the tests first and refuses to package if any fails. Then run **Develope
 | `src/util.js`   | Formatting and timeout helpers                                                 |
 | `test/`         | `node:test` suites; `test/helpers.js` stands in for the `vscode` module        |
 | `docs/render.js` | Draws the README images in `docs/images` with headless Chrome (`node docs/render.js`) |
+| `scripts/make-icons.py` | Draws the robot once and writes the status bar font glyph, the activity bar icon and the extension icon (`python3 scripts/make-icons.py`; needs fontTools and Chrome) |
+| `scripts/make-sounds.js` | Synthesizes the finish blip                                                    |
 
 Run the tests with `npm test` (or `node --test 'test/*.test.js'`). The extension tests start real `sleep` processes to stand in for Claude sessions, so they need Linux.
 
