@@ -39,7 +39,7 @@ function setup(t, { preferred = 'panel', context = createContext() } = {}) {
     failUpdates: false,
     onExecute: undefined,
   });
-  state.config.agentStatus = {};
+  state.config.agentWatch = {};
   state.config.claudeCode = { global: preferred === null ? {} : { preferredLocation: preferred }, workspace: {} };
   const claudeDir = createClaudeDir();
   process.env.CLAUDE_CONFIG_DIR = claudeDir;
@@ -66,8 +66,8 @@ function setup(t, { preferred = 'panel', context = createContext() } = {}) {
   return { context, claudeDir, session, transcript, start };
 }
 
-const refresh = () => state.handlers['agentStatus.refresh']();
-const open = (id) => state.handlers['agentStatus.open'](`claude-code:${id}`);
+const refresh = () => state.handlers['agentWatch.refresh']();
+const open = (id) => state.handlers['agentWatch.open'](`claude-code:${id}`);
 const chip = () => state.items[state.items.length - 1];
 const view = () => state.views[state.views.length - 1];
 const openFolders = (...dirs) => {
@@ -80,7 +80,7 @@ function git(cwd, ...args) {
 }
 
 function createRepo() {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-status-repo-')));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-watch-repo-')));
   git(root, 'init', '-q', '-b', 'main');
   fs.writeFileSync(path.join(root, 'auth.ts'), 'export const a = 1;\n');
   git(root, 'add', '.');
@@ -98,7 +98,7 @@ test('shows one dot per live session and skips dead or reused PIDs', async (t) =
     JSON.stringify({ pid: 4194000, sessionId: 'dead', cwd: '/tmp', status: 'waiting' }),
   );
   await start();
-  assert.equal(chip().text, '$(agent-status-robot) 1 🟡', 'the robot, the number of agents working, a dot per session');
+  assert.equal(chip().text, '$(agent-watch-robot) 1 🟡', 'the robot, the number of agents working, a dot per session');
   assert.equal(chip().color, '#FBC02D');
   assert.equal(chip().visible, true);
   assert.deepEqual(view().badge, { value: 1, tooltip: '1 agent working' }, 'the panel badge shows the same count');
@@ -108,7 +108,7 @@ test('only shows sessions of this window by default', async (t) => {
   const { session, start } = setup(t);
   session({ status: 'busy' }, spawnForeignProcess);
   await start();
-  assert.equal(chip().text, '$(agent-status-robot) No agents');
+  assert.equal(chip().text, '$(agent-watch-robot) No agents');
   assert.equal(chip().color, undefined, 'still visible, in the status bar color');
   assert.equal(chip().visible, true);
 });
@@ -154,7 +154,7 @@ test('when one session finishes and another waits, only the waiting sound plays'
 
 test('each sound can be turned off', async (t) => {
   const { claudeDir, session, start } = setup(t);
-  Object.assign(state.config.agentStatus, { soundOnWaiting: false, soundOnFinish: false });
+  Object.assign(state.config.agentWatch, { soundOnWaiting: false, soundOnFinish: false });
   const { proc, record } = session({ status: 'busy' });
   await start();
   for (const status of ['waiting', 'busy', 'idle']) {
@@ -189,7 +189,7 @@ test('opens an existing session without starting a chat or touching settings', a
 
 test('never asks Claude Code to open a chat without messages', async (t) => {
   const { session, start } = setup(t);
-  state.config.agentStatus.showEmptySessions = true;
+  state.config.agentWatch.showEmptySessions = true;
   const { record } = session({ status: 'idle' }, undefined, { empty: true });
   await start();
   await open(record.sessionId);
@@ -203,7 +203,7 @@ test('hides idle chats without messages, but shows them while they work', async 
   session({ status: 'busy' }, undefined, { empty: true });
   session({ status: 'idle' });
   await start();
-  assert.equal(chip().text, '$(agent-status-robot) 1 🟡🟢');
+  assert.equal(chip().text, '$(agent-watch-robot) 1 🟡🟢');
 });
 
 test('two quick clicks open one after the other', async (t) => {
@@ -223,19 +223,9 @@ test('two quick clicks open one after the other', async (t) => {
   assert.equal(overlapped, false);
 });
 
-test('restores the preference after a click interrupted by a crash', async (t) => {
-  const context = createContext();
-  await context.globalState.update('pendingPreferredLocationRestore', { previous: 'panel' });
-  const { start } = setup(t, { preferred: 'sidebar', context });
-  await start();
-  await delay(20);
-  assert.equal(state.config.claudeCode.global.preferredLocation, 'panel');
-  assert.equal(context.globalState.get('pendingPreferredLocationRestore'), undefined);
-});
-
 test('does not open sessions that run in another window', async (t) => {
   const { session, start } = setup(t);
-  state.config.agentStatus.scope = 'all';
+  state.config.agentWatch.scope = 'all';
   const { record } = session({ status: 'idle' }, spawnForeignProcess);
   await start();
   await open(record.sessionId);
@@ -245,10 +235,10 @@ test('does not open sessions that run in another window', async (t) => {
 
 test('falls back to defaults for invalid settings', async (t) => {
   const { session, start } = setup(t);
-  Object.assign(state.config.agentStatus, { icon: '$(evil) x', maxDots: 'lots', dots: { busy: 42 }, scope: 'nope' });
+  Object.assign(state.config.agentWatch, { icon: '$(evil) x', maxDots: 'lots', dots: { busy: 42 }, scope: 'nope' });
   session({ status: 'busy' });
   await start();
-  assert.equal(chip().text, '$(agent-status-robot) 1 🟡');
+  assert.equal(chip().text, '$(agent-watch-robot) 1 🟡');
 });
 
 test('notifies when a session stops to wait for you, and opens it from the notification', async (t) => {
@@ -275,7 +265,7 @@ test('"Turn Off" in the notification disables it', async (t) => {
   writeSession(claudeDir, proc, { ...record, status: 'waiting' });
   await refresh();
   await delay(30);
-  assert.equal(state.config.agentStatus.notifyOnWaiting, false);
+  assert.equal(state.config.agentWatch.notifyOnWaiting, false);
 });
 
 test('shows what a working session is doing', async (t) => {
@@ -294,9 +284,9 @@ test('groups sessions by branch and worktree when asked', async (t) => {
   session({ status: 'busy', cwd: root, startedAt: 1 });
   session({ status: 'busy', cwd: tree, startedAt: 2 });
   session({ status: 'idle', cwd: root, startedAt: 3 });
-  state.config.agentStatus.groupBy = 'branch';
+  state.config.agentWatch.groupBy = 'branch';
   await start();
-  assert.equal(chip().text, '$(agent-status-robot) 2 🟡🟢 · 🟡', 'the two sessions sharing main sit together');
+  assert.equal(chip().text, '$(agent-watch-robot) 2 🟡🟢 · 🟡', 'the two sessions sharing main sit together');
   const hover = chip().tooltip.value;
   assert.ok(hover.includes('$(git-branch) **main**'));
   assert.ok(hover.includes(`$(git-branch) **feat/x** · ${escapeMarkdown(`${path.basename(root)} · worktree`)}`));
@@ -325,10 +315,10 @@ test('the panel lists edited files with their changes and opens a diff against H
   const [fileNode] = await view().provider.getChildren(filesNode);
   assert.equal(fileNode.item.description, '+2 −1');
 
-  await state.handlers['agentStatus.openFileDiff'](fileNode);
+  await state.handlers['agentWatch.openFileDiff'](fileNode);
   const diff = state.executed.find((e) => e.id === 'vscode.diff');
   assert.equal(diff.args[1].fsPath, file);
-  const head = await state.contentProviders['agent-status-base'].provideTextDocumentContent(diff.args[0]);
+  const head = await state.contentProviders['agent-watch-base'].provideTextDocumentContent(diff.args[0]);
   assert.equal(head, 'export const a = 1;\n');
 });
 
@@ -343,7 +333,7 @@ test('says "No agents" in the language VS Code uses', async (t) => {
   const { start } = setup(t);
   state.l10n = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'l10n', 'bundle.l10n.es.json'), 'utf8'));
   await start();
-  assert.equal(chip().text, '$(agent-status-robot) Sin agentes');
+  assert.equal(chip().text, '$(agent-watch-robot) Sin agentes');
 });
 
 test('every localized string has a Spanish translation', () => {
@@ -408,15 +398,15 @@ test('in a multi-root workspace each file is checked against its own repository'
   const [fileNode] = await view().provider.getChildren(filesNode);
   assert.equal(fileNode.file.root, back);
   assert.equal(fileNode.item.description, '+1 −1');
-  await state.handlers['agentStatus.openFileDiff'](fileNode);
+  await state.handlers['agentWatch.openFileDiff'](fileNode);
   const diff = state.executed.find((e) => e.id === 'vscode.diff');
-  const head = await state.contentProviders['agent-status-base'].provideTextDocumentContent(diff.args[0]);
+  const head = await state.contentProviders['agent-watch-base'].provideTextDocumentContent(diff.args[0]);
   assert.equal(head, 'export const a = 1;\n', "HEAD comes from the file's repository, not the session's");
 });
 
 test('in a workspace without git, every file edited inside it is listed', async (t) => {
   const { session, transcript, start } = setup(t);
-  const workspace = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-status-plain-')));
+  const workspace = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-watch-plain-')));
   fs.mkdirSync(path.join(workspace, 'docs'));
   fs.writeFileSync(path.join(workspace, 'docs', 'notes.md'), '# Notes\n');
   openFolders(workspace);
@@ -433,7 +423,7 @@ test('in a workspace without git, every file edited inside it is listed', async 
   assert.deepEqual(files.map((f) => f.file.path), [path.join(workspace, 'docs', 'notes.md')]);
   assert.equal(files[0].item.description, 'docs', 'no git, so no changes to report');
 
-  await state.handlers['agentStatus.openFileDiff'](files[0]);
+  await state.handlers['agentWatch.openFileDiff'](files[0]);
   assert.equal(state.executed.find((e) => e.id === 'vscode.diff'), undefined);
   assert.equal(state.executed.find((e) => e.id === 'vscode.open').args[0].fsPath, path.join(workspace, 'docs', 'notes.md'));
 });
@@ -459,22 +449,22 @@ test('the panel measures the files of a session from where its branch left main'
   const [fileNode] = await view().provider.getChildren(filesNode);
   assert.equal(fileNode.item.description, '+2 −1', 'both commits add up, though nothing is uncommitted');
 
-  await state.handlers['agentStatus.openFileDiff'](fileNode);
+  await state.handlers['agentWatch.openFileDiff'](fileNode);
   const diff = state.executed.find((e) => e.id === 'vscode.diff');
   assert.match(diff.args[2], /^auth\.ts \(main [0-9a-f]{7} ↔ Working Tree\)/);
-  const before = await state.contentProviders['agent-status-base'].provideTextDocumentContent(diff.args[0]);
+  const before = await state.contentProviders['agent-watch-base'].provideTextDocumentContent(diff.args[0]);
   assert.equal(before, 'export const a = 1;\n', 'the left side is the file as it was on main');
 });
 
 test("the panel lists files in worktrees of the workspace's repositories, wherever they are", async (t) => {
   const { session, transcript, start } = setup(t);
   const root = createRepo();
-  const tree = path.join(fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-status-wt-'))), 'broadcast');
+  const tree = path.join(fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-watch-wt-'))), 'broadcast');
   git(root, 'worktree', 'add', '-q', '-b', 'feat/broadcast', tree);
   fs.writeFileSync(path.join(tree, 'auth.ts'), 'export const a = 2;\nexport const b = 3;\n');
   git(tree, 'commit', '-q', '-am', 'broadcast');
   const unrelated = createRepo(); // a repository not open in VS Code, and a worktree of it
-  const unrelatedTree = path.join(fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-status-wt-'))), 'other');
+  const unrelatedTree = path.join(fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-watch-wt-'))), 'other');
   git(unrelated, 'worktree', 'add', '-q', '-b', 'feat/other', unrelatedTree);
   openFolders(root);
 

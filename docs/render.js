@@ -115,10 +115,10 @@ const CODE = [
   [['}', '']],
 ];
 
-const ROBOT_FONT = path.join(__dirname, '..', 'media', 'agent-status.woff');
+const ROBOT_FONT = path.join(__dirname, '..', 'media', 'agent-watch.woff');
 const esc = (text) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const icon = (name) => `<span class="codicon">&#${ICONS[name]};</span>`;
-// The extension's own robot, from media/agent-status.woff (scripts/make-icons.py).
+// The extension's own robot, from media/agent-watch.woff (scripts/make-icons.py).
 const robot = () => '<span class="codicon robot">&#xE000;</span>';
 // The activity bar icon, robot and dots, painted in the activity bar's color like VS Code does.
 const activityIcon = () =>
@@ -132,8 +132,8 @@ function css() {
   const robotFont = fs.readFileSync(ROBOT_FONT).toString('base64');
   return `
 @font-face { font-family: codicon; src: url(data:font/ttf;base64,${font}) format("truetype"); }
-@font-face { font-family: agent-status; src: url(data:font/woff;base64,${robotFont}) format("woff"); }
-.codicon.robot { font-family: agent-status; }
+@font-face { font-family: agent-watch; src: url(data:font/woff;base64,${robotFont}) format("woff"); }
+.codicon.robot { font-family: agent-watch; }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: #1f1f1f; color: #cccccc; font-family: "Noto Sans", "Ubuntu", sans-serif; -webkit-font-smoothing: antialiased; }
 .codicon { font-family: codicon; font-size: 16px; line-height: 1; display: inline-block; vertical-align: -3px; }
@@ -292,7 +292,7 @@ function panel() {
   return `<div class="workbench">
   <div class="activitybar">${activity}<div class="act active">${activityIcon()}<span class="badge">2</span></div></div>
   <div class="sidebar">
-    <div class="header"><span>AGENT STATUS: SESSIONS</span><span class="actions">${['list-flat', 'filter', 'refresh', 'collapse-all'].map(icon).join('')}</span></div>
+    <div class="header"><span>AGENT WATCH: SESSIONS</span><span class="actions">${['list-flat', 'filter', 'refresh', 'collapse-all'].map(icon).join('')}</span></div>
     <div class="tree">${rows}</div>
   </div>
   <div class="editor-rest">${editor()}</div>
@@ -343,7 +343,7 @@ function render() {
   if (!CHROME) throw new Error('Google Chrome or Chromium not found; set CHROME.');
   if (!CODICON_TTF) throw new Error("VS Code's codicon.ttf not found; set CODICON_TTF.");
   fs.mkdirSync(OUT, { recursive: true });
-  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-status-docs-'));
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-watch-docs-'));
   try {
     const style = css();
     for (const image of IMAGES) {

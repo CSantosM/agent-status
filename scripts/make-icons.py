@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Draws the Agent Status robot once and writes it everywhere it appears:
+"""Draws the Agent Watch robot once and writes it everywhere it appears:
 
-  media/agent-status.woff     the status bar glyph: product icon "agent-status-robot", U+E000
+  media/agent-watch.woff     the status bar glyph: product icon "agent-watch-robot", U+E000
                               (the chip's live dots follow it, so it has none of its own)
   media/activity.svg          the activity bar icon: the robot with three dots under its head,
                               in one color, as VS Code paints activity bar icons
@@ -157,7 +157,7 @@ def write_font(path):
     builder.setupHorizontalMetrics({'.notdef': (upm, 0), 'robot': (upm, glyph.xMin)})
     # Like VS Code's codicons: the glyph fills the em square, with no descent.
     builder.setupHorizontalHeader(ascent=upm, descent=0)
-    builder.setupNameTable({'familyName': 'Agent Status Icons', 'styleName': 'Regular'})
+    builder.setupNameTable({'familyName': 'Agent Watch Icons', 'styleName': 'Regular'})
     builder.setupOS2(sTypoAscender=upm, sTypoDescender=0, sTypoLineGap=0, usWinAscent=upm, usWinDescent=0)
     builder.setupPost()
     builder.font.flavor = 'woff'
@@ -202,7 +202,7 @@ def find_chrome():
 
 
 def write_png(svg, path, size=128):
-    work = tempfile.mkdtemp(prefix='agent-status-icon-')
+    work = tempfile.mkdtemp(prefix='agent-watch-icon-')
     try:
         html = os.path.join(work, 'icon.html')
         with open(html, 'w') as f:
@@ -220,14 +220,14 @@ def write_png(svg, path, size=128):
 
 
 def main():
-    write_font(os.path.join(MEDIA, 'agent-status.woff'))
+    write_font(os.path.join(MEDIA, 'agent-watch.woff'))
     with open(os.path.join(MEDIA, 'activity.svg'), 'w') as f:
         f.write(activity_svg())
     svg = icon_svg()
     with open(os.path.join(MEDIA, 'icon.svg'), 'w') as f:
         f.write(svg)
     write_png(svg, os.path.join(MEDIA, 'icon.png'))
-    for name in ('agent-status.woff', 'activity.svg', 'icon.svg', 'icon.png'):
+    for name in ('agent-watch.woff', 'activity.svg', 'icon.svg', 'icon.png'):
         print(f'Wrote media/{name}')
 
 

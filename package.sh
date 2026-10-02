@@ -1,76 +1,14 @@
 #!/usr/bin/env bash
-# Builds agent-status-<version>.vsix with no npm dependencies.
+# Builds agent-watch-<version>.vsix with the official packager, vsce. vsce runs the tests first (the
+# "vscode:prepublish" script) and refuses to package if any fails.
 # Usage: ./package.sh            build the .vsix
 #        ./package.sh --install  build it and install it into VS Code
 set -euo pipefail
 cd "$(dirname "$0")"
 
-echo "Running tests..."
-tests_log=$(mktemp)
-node --test --test-reporter=tap 'test/*.test.js' > "$tests_log" 2>&1 || {
-  cat "$tests_log"
-  rm -f "$tests_log"
-  echo "Tests failed; not packaging." >&2
-  exit 1
-}
-grep -E '^# (pass|fail)' "$tests_log"
-rm -f "$tests_log"
-
 version=$(node -p "require('./package.json').version")
-out="$PWD/agent-status-${version}.vsix"
-build=$(mktemp -d)
-trap 'rm -rf "$build"' EXIT
-
-mkdir -p "$build/extension"
-cp -r package.json extension.js README.md src media l10n "$build/extension/"
-# The README's images are not packaged; point them at the repository so the Extensions view shows them.
-sed -i -E 's#src="(docs/images|media)/#src="https://raw.githubusercontent.com/CSantosM/agent-status/main/\1/#g' "$build/extension/README.md"
-
-cat > "$build/extension.vsixmanifest" <<EOF
-<?xml version="1.0" encoding="utf-8"?>
-<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
-  <Metadata>
-    <Identity Language="en-US" Id="agent-status" Version="${version}" Publisher="local" />
-    <DisplayName>Agent Status</DisplayName>
-    <Description xml:space="preserve">A status bar chip with one dot per running coding agent session (Claude Code for now): working, waiting or idle.</Description>
-    <Categories>Other</Categories>
-    <Icon>extension/media/icon.png</Icon>
-    <Properties>
-      <Property Id="Microsoft.VisualStudio.Code.Engine" Value="^1.90.0" />
-      <Property Id="Microsoft.VisualStudio.Code.ExtensionDependencies" Value="" />
-      <Property Id="Microsoft.VisualStudio.Code.ExtensionPack" Value="" />
-      <Property Id="Microsoft.VisualStudio.Code.ExtensionKind" Value="workspace" />
-    </Properties>
-  </Metadata>
-  <Installation>
-    <InstallationTarget Id="Microsoft.VisualStudio.Code" />
-  </Installation>
-  <Dependencies />
-  <Assets>
-    <Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true" />
-    <Asset Type="Microsoft.VisualStudio.Services.Content.Details" Path="extension/README.md" Addressable="true" />
-    <Asset Type="Microsoft.VisualStudio.Services.Icons.Default" Path="extension/media/icon.png" Addressable="true" />
-  </Assets>
-</PackageManifest>
-EOF
-
-cat > "$build/[Content_Types].xml" <<'EOF'
-<?xml version="1.0" encoding="utf-8"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension=".json" ContentType="application/json" />
-  <Default Extension=".js" ContentType="application/javascript" />
-  <Default Extension=".md" ContentType="text/markdown" />
-  <Default Extension=".wav" ContentType="audio/wav" />
-  <Default Extension=".svg" ContentType="image/svg+xml" />
-  <Default Extension=".png" ContentType="image/png" />
-  <Default Extension=".woff" ContentType="font/woff" />
-  <Default Extension=".vsixmanifest" ContentType="text/xml" />
-</Types>
-EOF
-
-rm -f "$out"
-(cd "$build" && zip -qrX "$out" '[Content_Types].xml' extension.vsixmanifest extension)
-echo "Built $out"
+out="$PWD/agent-watch-${version}.vsix"
+npx --yes @vscode/vsce@4 package --out "$out"
 
 if [[ "${1:-}" == "--install" ]]; then
   code --install-extension "$out" --force

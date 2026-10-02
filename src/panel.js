@@ -1,6 +1,6 @@
 'use strict';
 
-// The Agent Status view: one row per session, optionally grouped by branch or worktree. Each session
+// The Agent Watch view: one row per session, optionally grouped by branch or worktree. Each session
 // expands into what it is doing and the files it edited; a file opens its changes against HEAD.
 
 const vscode = require('vscode');
@@ -89,7 +89,7 @@ class SessionsPanel {
     const [icon, color] = STATUS_ICON[s.status] || STATUS_ICON.unknown;
     item.iconPath = new vscode.ThemeIcon(icon, new vscode.ThemeColor(color));
     item.contextValue = s.openable ? 'session.openable' : 'session';
-    item.command = { command: 'agentStatus.open', title: 'Open Session', arguments: [s.key] };
+    item.command = { command: 'agentWatch.open', title: 'Open Session', arguments: [s.key] };
     item.tooltip = this.sessionTooltip(s);
     item.accessibilityInformation = { label: `${s.title}, ${s.statusLabel}, ${this.host.activity(s) || s.folder}` };
     return { kind: 'session', session: s, item };
@@ -177,7 +177,7 @@ class SessionsPanel {
         .join(' · ');
       item.tooltip = f.path;
       item.contextValue = 'file';
-      item.command = { command: 'agentStatus.openFileDiff', title: 'Open Changes', arguments: [s.key, f.path] };
+      item.command = { command: 'agentWatch.openFileDiff', title: 'Open Changes', arguments: [s.key, f.path] };
       return { kind: 'file', session: s, file: f, item };
     });
   }

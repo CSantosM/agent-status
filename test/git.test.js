@@ -13,7 +13,7 @@ function git(cwd, ...args) {
 }
 
 function createRepo() {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-status-git-')));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agent-watch-git-')));
   git(root, 'init', '-q', '-b', 'main');
   fs.writeFileSync(path.join(root, 'a.txt'), 'one\ntwo\n');
   fs.writeFileSync(path.join(root, 'b.txt'), 'keep\n');

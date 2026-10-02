@@ -1,6 +1,6 @@
 'use strict';
 
-// Every agent Agent Status knows about. A provider is an object with:
+// Every agent Agent Watch knows about. A provider is an object with:
 //
 //   id, label            "claude-code", "Claude Code"
 //   watchDirs            directories whose changes mean sessions changed (watched, and polled anyway)

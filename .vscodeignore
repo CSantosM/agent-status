@@ -1,0 +1,12 @@
+# Only what the extension needs at run time goes into the package. The README's images stay on
+# GitHub: vsce points them at the repository.
+.git/**
+.gitignore
+.vscodeignore
+.vsce-check/**
+package.sh
+test/**
+docs/**
+scripts/**
+media/icon.svg
+*.vsix

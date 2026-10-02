@@ -14,22 +14,22 @@ const { Sound } = require('./src/sound');
 const { formatElapsed, plural, truncate, escapeMarkdown, commandLink, withTimeout } = require('./src/util');
 
 const CMD = {
-  showSessions: 'agentStatus.showSessions',
-  filterByStatus: 'agentStatus.filterByStatus',
-  refresh: 'agentStatus.refresh',
-  playFinishSound: 'agentStatus.playFinishSound',
-  playWaitingSound: 'agentStatus.playWaitingSound',
-  showLog: 'agentStatus.showLog',
-  open: 'agentStatus.open',
-  setFilter: 'agentStatus.setFilter',
-  openFileDiff: 'agentStatus.openFileDiff',
-  openFile: 'agentStatus.openFile',
-  groupByBranch: 'agentStatus.groupByBranch',
-  ungroup: 'agentStatus.ungroup',
+  showSessions: 'agentWatch.showSessions',
+  filterByStatus: 'agentWatch.filterByStatus',
+  refresh: 'agentWatch.refresh',
+  playFinishSound: 'agentWatch.playFinishSound',
+  playWaitingSound: 'agentWatch.playWaitingSound',
+  showLog: 'agentWatch.showLog',
+  open: 'agentWatch.open',
+  setFilter: 'agentWatch.setFilter',
+  openFileDiff: 'agentWatch.openFileDiff',
+  openFile: 'agentWatch.openFile',
+  groupByBranch: 'agentWatch.groupByBranch',
+  ungroup: 'agentWatch.ungroup',
 };
-const VIEW_ID = 'agentStatus.sessions';
+const VIEW_ID = 'agentWatch.sessions';
 // Documents with a file's content at a commit, for the left side of a diff.
-const BASE_SCHEME = 'agent-status-base';
+const BASE_SCHEME = 'agent-watch-base';
 
 const STATUS = {
   waiting: { label: 'Waiting', rank: 0, color: '#F44336' },
@@ -57,25 +57,25 @@ const MAX_DETAIL = 140;
 const MAX_NOTIFICATIONS = 3;
 
 function activate(context) {
-  const log = vscode.window.createOutputChannel('Agent Status', { log: true });
+  const log = vscode.window.createOutputChannel('Agent Watch', { log: true });
   context.subscriptions.push(log);
   try {
-    new AgentStatus(context, log);
+    new AgentWatch(context, log);
   } catch (err) {
     log.error(`Activation failed: ${err.stack || err}`);
-    vscode.window.showErrorMessage(`Agent Status could not start: ${err.message}`);
+    vscode.window.showErrorMessage(`Agent Watch could not start: ${err.message}`);
   }
 }
 
 function deactivate() {}
 
-class AgentStatus {
+class AgentWatch {
   constructor(context, log) {
     this.context = context;
     this.log = log;
     this.logged = new Map();
 
-    this.claudeOpener = new ClaudeCodeOpener({ vscode, context, log });
+    this.claudeOpener = new ClaudeCodeOpener({ vscode, log });
     this.providers = createProviders({ claudeCode: { opener: this.claudeOpener } });
     this.git = createGit();
     this.sound = new Sound({
@@ -98,8 +98,8 @@ class AgentStatus {
     this.rendered = {};
 
     // Lowest priority on the right keeps the chip next to the notifications bell.
-    this.item = vscode.window.createStatusBarItem('agentStatus.chip', vscode.StatusBarAlignment.Right, -10000);
-    this.item.name = 'Agent Status';
+    this.item = vscode.window.createStatusBarItem('agentWatch.chip', vscode.StatusBarAlignment.Right, -10000);
+    this.item.name = 'Agent Watch';
     this.item.command = CMD.showSessions;
 
     this.panel = new SessionsPanel({
@@ -150,7 +150,7 @@ class AgentStatus {
       vscode.window.onDidCloseTerminal(() => this.schedule()),
       vscode.workspace.onDidChangeWorkspaceFolders(() => this.schedule()),
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration('agentStatus')) this.schedule();
+        if (e.affectsConfiguration('agentWatch')) this.schedule();
       }),
     );
 
@@ -412,7 +412,7 @@ class AgentStatus {
     );
     if (choice === 'Open') this.open(s.key);
     if (choice === 'Turn Off') {
-      vscode.workspace.getConfiguration('agentStatus').update('notifyOnWaiting', false, vscode.ConfigurationTarget.Global);
+      vscode.workspace.getConfiguration('agentWatch').update('notifyOnWaiting', false, vscode.ConfigurationTarget.Global);
     }
   }
 
@@ -747,7 +747,7 @@ async function terminalShells() {
 }
 
 function settings() {
-  const c = vscode.workspace.getConfiguration('agentStatus');
+  const c = vscode.workspace.getConfiguration('agentWatch');
   const oneOf = (key, allowed) => (allowed.includes(c.get(key)) ? c.get(key) : allowed[0]);
   const icon = c.get('icon');
   const maxDots = Number(c.get('maxDots'));
@@ -767,7 +767,7 @@ function settings() {
     order: oneOf('order', ['stable', 'status']),
     groupBy: oneOf('groupBy', ['none', 'branch']),
     showEmptySessions: c.get('showEmptySessions') === true,
-    icon: typeof icon === 'string' && /^[a-z0-9-]+$/.test(icon) ? icon : 'agent-status-robot',
+    icon: typeof icon === 'string' && /^[a-z0-9-]+$/.test(icon) ? icon : 'agent-watch-robot',
     iconReflectsStatus: c.get('iconReflectsStatus') !== false,
     maxDots: Number.isInteger(maxDots) ? Math.min(50, Math.max(1, maxDots)) : 8,
     hideWhenEmpty: c.get('hideWhenEmpty') === true,
@@ -781,7 +781,7 @@ function settings() {
 }
 
 function setGroupBy(value) {
-  return vscode.workspace.getConfiguration('agentStatus').update('groupBy', value, vscode.ConfigurationTarget.Global);
+  return vscode.workspace.getConfiguration('agentWatch').update('groupBy', value, vscode.ConfigurationTarget.Global);
 }
 
 function workspaceFolderOf(cwd) {
@@ -865,7 +865,7 @@ function urgentColor(sessions) {
 }
 
 function accessibleSummary(sessions) {
-  if (!sessions.length) return 'Agent Status: no sessions';
+  if (!sessions.length) return 'Agent Watch: no sessions';
   const parts = FILTERS.filter((f) => f.key !== 'all')
     .map((f) => `${countFor(sessions, f.key)} ${f.label.toLowerCase()}`)
     .join(', ');

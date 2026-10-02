@@ -1,26 +1,42 @@
 {
-  "name": "agent-status",
-  "displayName": "Agent Status",
-  "description": "A status bar chip with one dot per running coding agent session (Claude Code for now): working, waiting or idle.",
+  "name": "agent-watch",
+  "displayName": "Agent Watch",
+  "description": "Watch your coding agents from the status bar: one dot per session (working, waiting or idle), what each is doing, the files it changed, and a sound when it needs you. Supports Claude Code.",
   "icon": "media/icon.png",
-  "version": "0.11.0",
-  "publisher": "local",
-  "private": true,
+  "version": "0.1.0",
+  "publisher": "csantosm",
+  "preview": true,
   "license": "MIT",
   "author": "Carlos Santos",
   "repository": {
     "type": "git",
-    "url": "https://github.com/CSantosM/agent-status.git"
+    "url": "https://github.com/CSantosM/agent-watch.git"
   },
-  "homepage": "https://github.com/CSantosM/agent-status#readme",
+  "homepage": "https://github.com/CSantosM/agent-watch#readme",
   "bugs": {
-    "url": "https://github.com/CSantosM/agent-status/issues"
+    "url": "https://github.com/CSantosM/agent-watch/issues"
+  },
+  "galleryBanner": {
+    "color": "#1F1F1F",
+    "theme": "dark"
   },
   "engines": {
     "vscode": "^1.90.0"
   },
   "categories": [
+    "AI",
+    "Visualization",
     "Other"
+  ],
+  "keywords": [
+    "agents",
+    "claude code",
+    "claude",
+    "ai agents",
+    "multi-agent",
+    "status bar",
+    "sessions",
+    "worktrees"
   ],
   "extensionKind": [
     "workspace"
@@ -29,8 +45,9 @@
   "l10n": "./l10n",
   "scripts": {
     "test": "node --test test/*.test.js",
-    "package": "./package.sh",
-    "install-extension": "./package.sh --install"
+    "vscode:prepublish": "node --test --test-reporter=dot test/*.test.js",
+    "package": "npx --yes @vscode/vsce@4 package",
+    "publish": "npx --yes @vscode/vsce@4 publish"
   },
   "activationEvents": [
     "onStartupFinished"
@@ -38,151 +55,151 @@
   "contributes": {
     "commands": [
       {
-        "command": "agentStatus.showSessions",
+        "command": "agentWatch.showSessions",
         "title": "Show Sessions",
-        "category": "Agent Status"
+        "category": "Agent Watch"
       },
       {
-        "command": "agentStatus.filterByStatus",
+        "command": "agentWatch.filterByStatus",
         "title": "Filter by Status",
-        "category": "Agent Status",
+        "category": "Agent Watch",
         "icon": "$(filter)"
       },
       {
-        "command": "agentStatus.refresh",
+        "command": "agentWatch.refresh",
         "title": "Refresh",
-        "category": "Agent Status",
+        "category": "Agent Watch",
         "icon": "$(refresh)"
       },
       {
-        "command": "agentStatus.groupByBranch",
+        "command": "agentWatch.groupByBranch",
         "title": "Group by Branch",
-        "category": "Agent Status",
+        "category": "Agent Watch",
         "icon": "$(git-branch)"
       },
       {
-        "command": "agentStatus.ungroup",
+        "command": "agentWatch.ungroup",
         "title": "Show as List",
-        "category": "Agent Status",
+        "category": "Agent Watch",
         "icon": "$(list-flat)"
       },
       {
-        "command": "agentStatus.playFinishSound",
+        "command": "agentWatch.playFinishSound",
         "title": "Play Finish Sound",
-        "category": "Agent Status"
+        "category": "Agent Watch"
       },
       {
-        "command": "agentStatus.playWaitingSound",
+        "command": "agentWatch.playWaitingSound",
         "title": "Play Waiting Sound",
-        "category": "Agent Status"
+        "category": "Agent Watch"
       },
       {
-        "command": "agentStatus.showLog",
+        "command": "agentWatch.showLog",
         "title": "Show Log",
-        "category": "Agent Status"
+        "category": "Agent Watch"
       },
       {
-        "command": "agentStatus.open",
+        "command": "agentWatch.open",
         "title": "Open Session",
-        "category": "Agent Status",
+        "category": "Agent Watch",
         "icon": "$(link-external)"
       },
       {
-        "command": "agentStatus.openFileDiff",
+        "command": "agentWatch.openFileDiff",
         "title": "Open Changes",
-        "category": "Agent Status",
+        "category": "Agent Watch",
         "icon": "$(diff)"
       },
       {
-        "command": "agentStatus.openFile",
+        "command": "agentWatch.openFile",
         "title": "Open File",
-        "category": "Agent Status",
+        "category": "Agent Watch",
         "icon": "$(go-to-file)"
       },
       {
-        "command": "agentStatus.setFilter",
+        "command": "agentWatch.setFilter",
         "title": "Set Filter",
-        "category": "Agent Status"
+        "category": "Agent Watch"
       }
     ],
     "menus": {
       "commandPalette": [
         {
-          "command": "agentStatus.open",
+          "command": "agentWatch.open",
           "when": "false"
         },
         {
-          "command": "agentStatus.setFilter",
+          "command": "agentWatch.setFilter",
           "when": "false"
         },
         {
-          "command": "agentStatus.openFileDiff",
+          "command": "agentWatch.openFileDiff",
           "when": "false"
         },
         {
-          "command": "agentStatus.openFile",
+          "command": "agentWatch.openFile",
           "when": "false"
         }
       ],
       "view/title": [
         {
-          "command": "agentStatus.groupByBranch",
-          "when": "view == agentStatus.sessions && config.agentStatus.groupBy != branch",
+          "command": "agentWatch.groupByBranch",
+          "when": "view == agentWatch.sessions && config.agentWatch.groupBy != branch",
           "group": "navigation@1"
         },
         {
-          "command": "agentStatus.ungroup",
-          "when": "view == agentStatus.sessions && config.agentStatus.groupBy == branch",
+          "command": "agentWatch.ungroup",
+          "when": "view == agentWatch.sessions && config.agentWatch.groupBy == branch",
           "group": "navigation@1"
         },
         {
-          "command": "agentStatus.filterByStatus",
-          "when": "view == agentStatus.sessions",
+          "command": "agentWatch.filterByStatus",
+          "when": "view == agentWatch.sessions",
           "group": "navigation@2"
         },
         {
-          "command": "agentStatus.refresh",
-          "when": "view == agentStatus.sessions",
+          "command": "agentWatch.refresh",
+          "when": "view == agentWatch.sessions",
           "group": "navigation@3"
         }
       ],
       "view/item/context": [
         {
-          "command": "agentStatus.open",
-          "when": "view == agentStatus.sessions && viewItem == session.openable",
+          "command": "agentWatch.open",
+          "when": "view == agentWatch.sessions && viewItem == session.openable",
           "group": "inline"
         },
         {
-          "command": "agentStatus.openFileDiff",
-          "when": "view == agentStatus.sessions && viewItem == file",
+          "command": "agentWatch.openFileDiff",
+          "when": "view == agentWatch.sessions && viewItem == file",
           "group": "inline@1"
         },
         {
-          "command": "agentStatus.openFile",
-          "when": "view == agentStatus.sessions && viewItem == file",
+          "command": "agentWatch.openFile",
+          "when": "view == agentWatch.sessions && viewItem == file",
           "group": "inline@2"
         },
         {
-          "command": "agentStatus.open",
-          "when": "view == agentStatus.sessions && viewItem == session.openable",
+          "command": "agentWatch.open",
+          "when": "view == agentWatch.sessions && viewItem == session.openable",
           "group": "1_open"
         },
         {
-          "command": "agentStatus.openFileDiff",
-          "when": "view == agentStatus.sessions && viewItem == file",
+          "command": "agentWatch.openFileDiff",
+          "when": "view == agentWatch.sessions && viewItem == file",
           "group": "1_open@1"
         },
         {
-          "command": "agentStatus.openFile",
-          "when": "view == agentStatus.sessions && viewItem == file",
+          "command": "agentWatch.openFile",
+          "when": "view == agentWatch.sessions && viewItem == file",
           "group": "1_open@2"
         }
       ]
     },
     "configuration": {
-      "title": "Agent Status",
+      "title": "Agent Watch",
       "properties": {
-        "agentStatus.scope": {
+        "agentWatch.scope": {
           "type": "string",
           "enum": [
             "window",
@@ -197,37 +214,37 @@
           "default": "window",
           "description": "Which sessions the chip shows. Sessions that belong elsewhere are listed but cannot be opened from this window."
         },
-        "agentStatus.showEmptySessions": {
+        "agentWatch.showEmptySessions": {
           "type": "boolean",
           "default": false,
           "description": "Also show chats that have no messages yet. They are never opened from here: Claude Code cannot restore an empty chat and would start a new one instead."
         },
-        "agentStatus.soundOnFinish": {
+        "agentWatch.soundOnFinish": {
           "type": "boolean",
           "default": true,
           "description": "Play a short blip when a session in this window finishes its turn (goes from working to idle)."
         },
-        "agentStatus.soundOnWaiting": {
+        "agentWatch.soundOnWaiting": {
           "type": "boolean",
           "default": true,
           "description": "Play a short alert when a session in this window stops to wait for your decision, such as a permission request (goes from working to waiting)."
         },
-        "agentStatus.finishSoundFile": {
+        "agentWatch.finishSoundFile": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Absolute path of a `.wav` file to play instead of the built-in finish blip. Try it with **Agent Status: Play Finish Sound**."
+          "markdownDescription": "Absolute path of a `.wav` file to play instead of the built-in finish blip. Try it with **Agent Watch: Play Finish Sound**."
         },
-        "agentStatus.waitingSoundFile": {
+        "agentWatch.waitingSoundFile": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Absolute path of a `.wav` file to play instead of the built-in waiting sound. Try it with **Agent Status: Play Waiting Sound**."
+          "markdownDescription": "Absolute path of a `.wav` file to play instead of the built-in waiting sound. Try it with **Agent Watch: Play Waiting Sound**."
         },
-        "agentStatus.notifyOnWaiting": {
+        "agentWatch.notifyOnWaiting": {
           "type": "boolean",
           "default": true,
           "description": "Show a notification with an Open button when a session in this window stops to wait for your decision."
         },
-        "agentStatus.order": {
+        "agentWatch.order": {
           "type": "string",
           "enum": [
             "stable",
@@ -240,7 +257,7 @@
           "default": "stable",
           "description": "Order of the dots, the hover list and the session picker."
         },
-        "agentStatus.groupBy": {
+        "agentWatch.groupBy": {
           "type": "string",
           "enum": [
             "none",
@@ -253,28 +270,28 @@
           ],
           "description": "How sessions are grouped. Sessions sharing a working tree end up together, which shows agents that may step on each other."
         },
-        "agentStatus.icon": {
+        "agentWatch.icon": {
           "type": "string",
-          "default": "agent-status-robot",
-          "markdownDescription": "Icon at the start of the chip: `agent-status-robot` (the extension's robot, as in the activity bar) or any codicon, such as `robot` or `sparkle`."
+          "default": "agent-watch-robot",
+          "markdownDescription": "Icon at the start of the chip: `agent-watch-robot` (the extension's robot, as in the activity bar) or any codicon, such as `robot` or `sparkle`."
         },
-        "agentStatus.iconReflectsStatus": {
+        "agentWatch.iconReflectsStatus": {
           "type": "boolean",
           "default": true,
           "description": "Color the icon with the most urgent status: red if any session is waiting, yellow if any is working."
         },
-        "agentStatus.maxDots": {
+        "agentWatch.maxDots": {
           "type": "integer",
           "default": 8,
           "minimum": 1,
           "description": "Maximum number of dots; the rest are grouped as +N."
         },
-        "agentStatus.hideWhenEmpty": {
+        "agentWatch.hideWhenEmpty": {
           "type": "boolean",
           "default": false,
           "description": "Hide the chip when no sessions are running."
         },
-        "agentStatus.dots": {
+        "agentWatch.dots": {
           "type": "object",
           "default": {
             "busy": "🟡",
@@ -300,43 +317,35 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "agentStatus",
-          "title": "Agent Status",
+          "id": "agentWatch",
+          "title": "Agent Watch",
           "icon": "media/activity.svg"
         }
       ]
     },
     "views": {
-      "agentStatus": [
+      "agentWatch": [
         {
-          "id": "agentStatus.sessions",
+          "id": "agentWatch.sessions",
           "name": "Sessions",
-          "contextualTitle": "Agent Status"
+          "contextualTitle": "Agent Watch"
         }
       ]
     },
     "viewsWelcome": [
       {
-        "view": "agentStatus.sessions",
-        "contents": "No agent sessions are running in this window.\n\nStart one in Claude Code, or show sessions from other windows with the [Scope setting](command:workbench.action.openSettings?%5B%22agentStatus.scope%22%5D)."
+        "view": "agentWatch.sessions",
+        "contents": "No agent sessions are running in this window.\n\nStart one in Claude Code, or show sessions from other windows with the [Scope setting](command:workbench.action.openSettings?%5B%22agentWatch.scope%22%5D)."
       }
     ],
     "icons": {
-      "agent-status-robot": {
-        "description": "The Agent Status robot",
+      "agent-watch-robot": {
+        "description": "The Agent Watch robot",
         "default": {
-          "fontPath": "media/agent-status.woff",
+          "fontPath": "media/agent-watch.woff",
           "fontCharacter": "\\E000"
         }
       }
     }
-  },
-  "keywords": [
-    "agents",
-    "claude code",
-    "ai",
-    "status bar",
-    "multi-agent",
-    "sessions"
-  ]
+  }
 }
