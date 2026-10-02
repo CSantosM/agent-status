@@ -144,7 +144,7 @@ Everything specific to an agent lives in a provider under `src/providers/`. A pr
 From the Visual Studio Marketplace: search for **Agent Watch** in the Extensions view, or run
 
 ```sh
-code --install-extension csantosm.agent-watch
+code --install-extension csantosm.agent-watch-status
 ```
 
 ### From source
@@ -157,7 +157,7 @@ cd agent-watch
 ./package.sh --install
 ```
 
-`package.sh` builds the `.vsix` with the official packager, `vsce`, which runs the tests first and refuses to package if any fails. Then run **Developer: Reload Window** in each open VS Code window. To uninstall: `code --uninstall-extension csantosm.agent-watch`.
+`package.sh` builds the `.vsix` with the official packager, `vsce`, which runs the tests first and refuses to package if any fails. Then run **Developer: Reload Window** in each open VS Code window. To uninstall: `code --uninstall-extension csantosm.agent-watch-status`.
 
 ## Development
 
